@@ -74,6 +74,7 @@ Deno.serve(async (req) => {
             s.bathrooms = s.bathrooms ?? x.bathrooms; s.sleeps = s.sleeps ?? x.sleeps;
             (s as unknown as Record<string, unknown>).price_night = x.price_night; (s as unknown as Record<string, unknown>).price_total = x.price_total;
             if (!s.description || s.description.length < 300) s.description = [x.summary, x.amenities?.length ? "Amenities: " + x.amenities.join(", ") : ""].filter(Boolean).join("\n\n");
+            if (x.bed_summary) s.description = (s.description || "") + "\n\nBeds per room (from the page): " + x.bed_summary;
             s.note = "We read this page with a little AI help. Please double-check the town, bedrooms and bathrooms before saving.";
             s.ok = !!(s.city && s.bedrooms);
           }
@@ -128,9 +129,12 @@ Deno.serve(async (req) => {
       const r = await askJson<Record<string, unknown>>(system, user_msg, PROP_SCHEMA, 6000);
       const scores = r.scores as Record<string, { score: number; why: string }>;
       const total = sumScores(scores);
+      const couple = Number(r.couple_rooms) || 0, kids = Number(r.kid_rooms) || 0;
+      const gate = couple >= 5 && couple + kids >= 7;
       const upd = {
-        scores, total, gate_pass: !!r.gate_pass, ai_summary: r.ai_summary, red_flags: r.red_flags,
-        verify_checklist: r.verify_checklist, details: { ...(r.details as object), real_bedrooms: r.real_bedrooms },
+        scores, total, gate_pass: gate, ai_summary: r.ai_summary, red_flags: r.red_flags,
+        verify_checklist: r.verify_checklist,
+        details: { ...(r.details as object), real_bedrooms: r.real_bedrooms, couple_rooms: couple, kid_rooms: kids, bed_plan: r.bed_plan },
         status: "scored", updated_at: new Date().toISOString(),
       };
       const { data: saved, error } = await admin.from("properties").update(upd).eq("id", prop.id).select("*").single();

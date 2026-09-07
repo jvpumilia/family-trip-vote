@@ -116,6 +116,9 @@ export async function scrape(url: string): Promise<Scraped> {
     const extra: string[] = [];
     if (amen.length) extra.push("Amenities listed: " + Array.from(new Set(amen)).slice(0, 60).join(", "));
     if (rooms.length) extra.push("Photo tour rooms: " + rooms.join(", ") + (bedroomStops ? ` (${bedroomStops} labelled bedrooms)` : ""));
+    const caps = Array.from(new Set(Array.from(html.matchAll(/"caption":"((?:[^"\\\\]|\\\\.){15,300})"/g)).map((m) => unescapeJson(m[1]))))
+      .filter((c) => /\b(bed|bunk|king|queen|twin|full|sleep)/i.test(c)).slice(0, 25);
+    if (caps.length) extra.push("Photo captions about beds and rooms: " + caps.join(" | "));
     if (extra.length) out.description = (out.description || "") + "\n\n" + extra.join("\n");
     out.ok = !!(out.city && out.bedrooms);
     if (!out.description || out.description.length < 40) out.note = "Airbnb only gave us the headline; paste anything important from the listing into Notes.";

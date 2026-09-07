@@ -249,7 +249,7 @@
     return `<div class="card prop-card" data-open-prop="${p.id}">
       <div class="thumb" style="${p.image_url ? `background-image:url('${esc(p.image_url)}')` : ""}"></div>
       ${p.is_finalist ? `<span class="star">★ Finalist</span>` : ""}
-      ${pending ? `<i class="pill neutral badge">scoring…</i>` : (p.gate_pass ? `<i class="pill ok badge">7+ BR ✓</i>` : `<i class="pill warn badge">Bedroom gate ✗</i>`)}
+      ${pending ? `<i class="pill neutral badge">scoring…</i>` : (p.gate_pass ? `<i class="pill ok badge">Sleeps us right ✓</i>` : `<i class="pill warn badge">Bed plan short ✗</i>`)}
       <div class="body">
         <div class="title">${esc(p.title)}</div>
         <div class="meta">${esc(d?.name || p.city)} · ${p.bedrooms ?? "?"} BR · ${p.bathrooms ?? "?"} BA · sleeps ${p.sleeps ?? "?"}</div>
@@ -290,8 +290,9 @@
         ${det.toddler_notes ? `<b>Little kids</b><span>${esc(det.toddler_notes)}</span>` : ""}
       </div>
       ${p.status === "scored" ? `
-        <div class="section-title">Score: ${p.total}/100 ${p.gate_pass ? '<i class="pill ok">7+ real bedrooms ✓</i>' : '<i class="pill warn">Bedroom gate not met</i>'}</div>
+        <div class="section-title">Score: ${p.total}/100 ${p.gate_pass ? '<i class="pill ok">5 couple rooms + 2 kids\' rooms ✓</i>' : '<i class="pill warn">Bed plan doesn\'t cover us</i>'}</div>
         <p>${esc(p.ai_summary || "")}</p>
+        ${det.bed_plan ? `<p><b>Sleeping plan:</b> ${det.couple_rooms ?? "?"} couple room${det.couple_rooms === 1 ? "" : "s"} · ${det.kid_rooms ?? "?"} kids' room${det.kid_rooms === 1 ? "" : "s"}. ${esc(det.bed_plan)}</p>` : ""}
         ${scoreBars(p.scores, PROP_CRITERIA, true)}
         ${(p.red_flags || []).length ? `<div class="section-title">Red flags</div><ul class="list">${p.red_flags.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
         ${(p.verify_checklist || []).length ? `<div class="section-title">Confirm in writing before any deposit</div><ul class="list">${p.verify_checklist.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
@@ -314,7 +315,7 @@
     $("#finalist-meter").innerHTML = `<b>${esc(hh)}</b> · ${mine.length} house${mine.length === 1 ? "" : "s"} added · <b>${fin.length} of ${cap}</b> finalists starred ${fin.length < cap ? `<span class="muted">— star ${cap - fin.length} more to fill your slots</span>` : `<span class="muted">— all set</span>`}`;
     $("#mine-list").innerHTML = mine.length ? mine.map((p) => `<div class="card mine-item">
       <div><div class="title" style="font-weight:600"><a href="#" data-open-prop="${p.id}">${esc(p.title)}</a></div>
-      <div class="meta muted tiny">${esc(destOf(p)?.name || p.city)} · ${p.bedrooms ?? "?"} BR · ${p.status === "scored" ? p.total + "/100" : "scoring…"} ${p.status === "scored" && !p.gate_pass ? '· <i class="pill warn">bedroom gate ✗</i>' : ""} · added by ${esc(nameOf(p.submitted_by))}</div></div>
+      <div class="meta muted tiny">${esc(destOf(p)?.name || p.city)} · ${p.bedrooms ?? "?"} BR · ${p.status === "scored" ? p.total + "/100" : "scoring…"} ${p.status === "scored" && !p.gate_pass ? '· <i class="pill warn">bed plan ✗</i>' : ""} · added by ${esc(nameOf(p.submitted_by))}</div></div>
       <div class="actions"><button class="star-btn ${p.is_finalist ? "on" : ""}" data-star="${p.id}" ${p.status !== "scored" ? "disabled" : ""}>${p.is_finalist ? "★ Finalist" : "☆ Make finalist"}</button></div>
     </div>`).join("") : `<p class="empty">Your household hasn't added a house yet.</p>`;
   }
@@ -327,7 +328,7 @@
       else toast(error.message, 5000);
       return;
     }
-    if (!p.is_finalist && !p.gate_pass) toast("Starred. Heads up: the scorer doesn't think this has 7 real bedrooms.", 5000);
+    if (!p.is_finalist && !p.gate_pass) toast("Starred. Heads up: the scorer doesn't think the beds cover five couples plus two kids' rooms.", 5500);
     await loadAll(); renderAll();
   }
 

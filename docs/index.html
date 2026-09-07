@@ -86,7 +86,7 @@
   <section class="panel" data-panel="lodging" hidden>
     <div class="panel-head">
       <h2>All lodging</h2>
-      <p class="muted">Every house anyone has added, scored out of 100. ★ marks a household's finalist. The 7-real-bedroom rule is the gate.</p>
+      <p class="muted">Every house anyone has added, scored out of 100. ★ marks a household's finalist. The gate is the sleeping plan: five bedrooms that fit a couple (king, queen or two fulls) plus two kids' rooms (bunks welcome). Sofa beds and lofts don't count.</p>
       <div class="filters">
         <select id="lodging-filter"><option value="">All destinations</option></select>
         <select id="lodging-sort">
@@ -125,7 +125,7 @@
             <label>State <input name="state" required placeholder="e.g. TN" maxlength="20"></label>
           </div>
           <div class="row three">
-            <label>Real bedrooms <input name="bedrooms" type="number" min="1" max="30" required></label>
+            <label>Bedrooms <small class="muted">(count bunk rooms; not lofts or sofas)</small> <input name="bedrooms" type="number" min="1" max="30" required></label>
             <label>Bathrooms <input name="bathrooms" type="number" min="1" max="30" step="0.5"></label>
             <label>Sleeps <input name="sleeps" type="number" min="1" max="60"></label>
           </div>
@@ -133,7 +133,7 @@
             <label>Price per night ($) <input name="price_night" type="number" min="0" step="1"></label>
             <label>Total for the week ($) <input name="price_total" type="number" min="0" step="1"></label>
           </div>
-          <label>Notes for the scorer <textarea name="notes" rows="3" placeholder="Anything the listing says that matters: 2 dishwashers, indoor pool, steep driveway, loft counted as a bedroom…"></textarea></label>
+          <label>Notes for the scorer <textarea name="notes" rows="3" placeholder="What beds are in each room (e.g. 5 kings, 2 bunk rooms), 2 dishwashers, indoor pool, steep driveway…"></textarea></label>
           <div class="row">
             <button class="btn primary" type="submit" id="submit-btn">Save &amp; score it</button>
             <button class="btn" type="button" id="cancel-submit">Cancel</button>

@@ -8,14 +8,14 @@ THE FAMILY AND THE TRIP
 - 14 people from five households: Southwest Florida (fly RSW or TPA), Gig Harbor WA (fly SEA), Nashville TN (fly BNA), Rockford IL (fly ORD/RFD/MKE), Janesville WI (fly MSN/MKE/ORD).
 - Kids are 11, 8, 4 and 2. Two car seats and a booster travel with them.
 - Seven nights in June 2027, Saturday to Saturday. Must be booked by 30 September 2026.
-- HARD REQUIREMENT: seven or more real, enclosed bedrooms with real beds. Lofts, bunk nooks, and pull-out couches do not count as bedrooms.
+- HARD REQUIREMENT, the sleeping plan: seven real, enclosed bedrooms with real beds. Five are COUPLE ROOMS (five couples, each sharing a bed): each needs a king, a queen, or two full beds. Two are KIDS' ROOMS (the Washington family and the Florida family each need a second room for their children): bunk beds are fine there, and two kids sharing one bed need at least a queen. So one or two bunk-bed bedrooms are welcome and count toward the seven. Lofts, open sleeping nooks and pull-out couches do not count as bedrooms. Extra bedrooms beyond seven are margin, not waste.
 - Stated goals, in the family's words: (1) a house that never becomes a point of contention, (2) low travel burden, especially for the Washington family who asked for the fewest connections and car-seat hours, (3) kid activities that work for a toddler AND an eleven-year-old, plus rainy-day options, (4) nature / national-park access.
 - Also matters: six or more bathrooms, two refrigerators and two dishwashers, a table that seats 14, parking for three or more cars, on-site kid amenities (pool, game room, theater, playground), overflow lodging within 10 minutes for late-adding relatives, and June heat, crowds and cost.
 `;
 
 export const DEST_RUBRIC = `
 DESTINATION RUBRIC (100 points). Score each criterion as an integer.
-1. lodging (max 25) - GATE: depth of true 7+ bedroom inventory with no sofa beds, still bookable for peak June 2027 nine months out. Under 10 = disqualified. 25 = dozens of qualifying homes across several managers; 15-20 = a handful; <10 = one or none.
+1. lodging (max 25) - GATE: depth of true 7+ bedroom inventory (five couple rooms with king/queen/two fulls plus two kids' rooms, bunks fine, no sofa beds), still bookable for peak June 2027 nine months out. Under 10 = disqualified. 25 = dozens of qualifying homes across several managers; 15-20 = a handful; <10 = one or none.
 2. amenities (max 10) - pool, game room, theater, playground at or beside typical large rentals.
 3. travel (max 20) - 10 points for the Seattle leg (nonstop availability + ground time), 10 points for the other four origins combined.
 4. kids (max 15) - activity range for ages 2 through 11, must work for a toddler AND an 11-year-old, plus rainy-day options.
@@ -28,7 +28,7 @@ TRAVEL DIFFICULTY per origin household: difficulty is an integer 1 (trivial) to 
 
 export const PROP_RUBRIC = `
 LODGING RUBRIC (100 points). Score each criterion as an integer.
-1. bedrooms (max 25) - real enclosed bedrooms with real beds. 9+ real bedrooms = 25; 8 = 22; 7 = 18; 6 = 8; 5 or fewer = 0. Do not count lofts, bunk nooks or sofa beds. If the listing is ambiguous, estimate conservatively and say so.
+1. bedrooms (max 25) - the SLEEPING PLAN. Count couple_rooms (enclosed bedrooms with a king, a queen, or two full beds) and kid_rooms (enclosed bedrooms whose beds are bunks, twins, or a single queen suitable for two children). A room with a king AND a bunk still counts once, as a couple room. Lofts, nooks and sofa beds count for nothing. Then: couple_rooms >= 5 and total >= 7 with an extra room to spare = 25; exactly 5 couple rooms + 2 kids' rooms = 21; 7+ rooms but only 4 couple rooms (one couple in a bunk room) = 12; 6 rooms = 8; fewer = 0-3. If the listing does not say what beds are in each room, count only what you can verify, score conservatively and put "confirm beds per room in writing" in the checklist.
 2. bathrooms (max 10) - 7+ full baths = 10; 6 = 8; 5 = 5; 4 or fewer = 2.
 3. kid_amenities (max 15) - private pool (indoor pool is best for June storms), hot tub, game room/arcade, theater, playground, resort water park access.
 4. kitchen_gathering (max 10) - two refrigerators, two dishwashers, table for 14, a gathering room that holds everyone.
@@ -36,7 +36,7 @@ LODGING RUBRIC (100 points). Score each criterion as an integer.
 6. value (max 15) - June price per bedroom-night against the local market and the family's budget sense; unknown price = 8 with a note.
 7. reviews (max 10) - rating x volume; a new listing with no reviews scores 4 and gets a red flag.
 8. logistics (max 5) - parking for 3+ cars, stairs/decks/loft safety for a 2- and 4-year-old, crib/high chair, check-in flexibility.
-gate_pass is true only when you are reasonably confident there are 7+ real bedrooms.
+gate_pass is true only when you are reasonably confident of five couple rooms plus two kids' rooms (seven enclosed bedrooms total).
 `;
 
 const RETRYABLE = /overloaded|rate.?limit|529|503|timeout/i;
@@ -135,7 +135,7 @@ export const DEST_SCHEMA = {
 
 export const PROP_SCHEMA = {
   type: "object", additionalProperties: false,
-  required: ["scores", "real_bedrooms", "gate_pass", "ai_summary", "red_flags", "verify_checklist", "details"],
+  required: ["scores", "real_bedrooms", "couple_rooms", "kid_rooms", "bed_plan", "gate_pass", "ai_summary", "red_flags", "verify_checklist", "details"],
   properties: {
     scores: {
       type: "object", additionalProperties: false,
@@ -143,6 +143,9 @@ export const PROP_SCHEMA = {
       properties: { bedrooms: scoreObj(25), bathrooms: scoreObj(10), kid_amenities: scoreObj(15), kitchen_gathering: scoreObj(10), location: scoreObj(10), value: scoreObj(15), reviews: scoreObj(10), logistics: scoreObj(5) },
     },
     real_bedrooms: { type: "integer", description: "Your best estimate of real enclosed bedrooms" },
+    couple_rooms: { type: "integer", description: "Enclosed bedrooms with a king, queen or two full beds" },
+    kid_rooms: { type: "integer", description: "Enclosed bedrooms with bunks/twins/one queen that suit two children (not already counted as couple rooms)" },
+    bed_plan: { type: "string", description: "One or two plain sentences: which rooms sleep the five couples and which two rooms take the kids, and what is unknown." },
     gate_pass: { type: "boolean" },
     ai_summary: { type: "string", description: "3-4 plain sentences: what this house is, what it does well for us, what worries you." },
     red_flags: { type: "array", items: { type: "string" } },
@@ -175,7 +178,7 @@ export function sumScores(scores: Record<string, { score: number }>): number {
 const nullable = (t: string, description = "") => ({ type: [t, "null"], description });
 export const EXTRACT_SCHEMA = {
   type: "object", additionalProperties: false,
-  required: ["title", "city", "state", "bedrooms", "bathrooms", "sleeps", "price_night", "price_total", "summary", "amenities"],
+  required: ["title", "city", "state", "bedrooms", "bathrooms", "sleeps", "price_night", "price_total", "summary", "amenities", "bed_summary"],
   properties: {
     title: nullable("string", "The house's name as the listing gives it"),
     city: nullable("string", "Town the house is in (not the company's office town)"),
@@ -187,9 +190,10 @@ export const EXTRACT_SCHEMA = {
     price_total: nullable("number", "Weekly total in USD if the page states one"),
     summary: { type: "string", description: "The listing's own description, condensed to the facts that matter for a 14-person family: rooms, beds, pools, game room, theater, kitchen, parking, location" },
     amenities: { type: "array", items: { type: "string" } },
+    bed_summary: nullable("string", "Beds per bedroom as the page states them, e.g. '4 king rooms, 2 queen rooms, 1 bunk room (2 queen bunks)'"),
   },
 };
-export type Extracted = { title: string | null; city: string | null; state: string | null; bedrooms: number | null; bathrooms: number | null; sleeps: number | null; price_night: number | null; price_total: number | null; summary: string; amenities: string[] };
+export type Extracted = { title: string | null; city: string | null; state: string | null; bedrooms: number | null; bathrooms: number | null; sleeps: number | null; price_night: number | null; price_total: number | null; summary: string; amenities: string[]; bed_summary: string | null };
 
 /** Pull listing facts out of raw page text with a fast model. */
 export async function extractListing(url: string, text: string): Promise<Extracted | null> {
