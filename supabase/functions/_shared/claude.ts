@@ -256,11 +256,19 @@ export async function findListings(destName: string, locality: string, region: s
     max_tokens: 1500,
     system: `You find specific vacation-rental listing pages for a 14-person family reunion (five couples plus kids 11, 8, 4 and 2). They need seven real bedrooms: five rooms with a king, queen or two fulls, plus two kids' rooms where bunks are fine. Sofa beds and lofts do not count. Prefer listings with private pools, game rooms or theaters. Return ONLY listing pages for one specific house: Airbnb "/rooms/<id>" URLs, VRBO "/<id>" URLs, or a local manager's page for one named property. Never return search-result pages, city pages, blogs or aggregators.\n${FAMILY_CONTEXT}`,
     messages: [{ role: "user", content: `Find up to ${max + 2} of the best 7+ bedroom rental houses near ${locality}, ${region}, ${country} (destination: ${destName}) for June 2027. Run at most four quick searches; results come only from airbnb.com and vrbo.com (for example "${locality} 8 bedroom", "${locality} 7 bedroom sleeps 16", "${region} 8 bedroom house near ${locality}"). Do NOT open pages; judge from result titles and snippets (Airbnb titles state bedroom counts). Then answer with a JSON array only: [{"url": "...", "why": "one sentence: bedrooms, baths, standout amenities, price if seen"}]` }],
-    tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 4, allowed_domains: ["airbnb.com", "vrbo.com"] }],
+    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 5, allowed_domains: ["airbnb.com", "vrbo.com"] }],
     output_config: { effort: "low" },
   };
   // deno-lint-ignore no-explicit-any
-  const res = await (client.beta.messages as any).create(params, { timeout: 110_000, maxRetries: 0 });
+  let res: any;
+  try {
+    res = await (client.beta.messages as any).create(params, { timeout: 110_000, maxRetries: 0 });
+  } catch (e) {
+    // the plain search tool is simplest and most predictable; fall back to the newer variant if this model rejects it
+    if (!/web_search_20250305|tool type|not supported/i.test((e as Error).message || "")) throw e;
+    params.tools = [{ type: "web_search_20260209", name: "web_search", max_uses: 5, allowed_domains: ["airbnb.com", "vrbo.com"] }];
+    res = await (client.beta.messages as any).create(params, { timeout: 110_000, maxRetries: 0 });
+  }
   const text = (res.content as Array<{ type: string; text?: string }>).filter((b) => b.type === "text").map((b) => b.text || "").join("\n");
   const m = text.match(/\[[\s\S]*\]/);
   let arr: Array<{ url: string; why: string }> = [];

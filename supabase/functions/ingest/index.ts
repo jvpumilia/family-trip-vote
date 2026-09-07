@@ -234,11 +234,20 @@ Deno.serve(async (req) => {
         } catch (e) { console.error("extract failed", e); }
       }
       if (!s.title || !s.bedrooms || s.bedrooms < 6) return json({ skipped: `not usable (${s.bedrooms ?? "?"} BR)`, title: s.title });
+      // the listing has to actually be near this destination (search engines love a same-named town elsewhere)
+      let near = { lat: dest.lat, lng: dest.lng };
+      if (s.city) {
+        const g = await geocode([s.city, s.state].filter(Boolean).join(", "));
+        if (g) {
+          if (milesBetween(g, dest) > 90) return json({ skipped: `wrong place: ${s.city}, ${s.state} is ${Math.round(milesBetween(g, dest))} miles from ${dest.name}`, title: s.title });
+          near = g;
+        }
+      }
       const jit = () => (Math.random() - 0.5) * 0.06;
       const row = {
         ai_pick: true, ai_note: `Found by web search when ${dest.name} was added. ${body.why || ""}`.trim(),
         destination_id: dest.id, url: s.url, source: s.source, title: s.title, city: s.city || dest.region.split(",")[0], state: s.state || dest.state,
-        lat: dest.lat + jit(), lng: dest.lng + jit(), bedrooms: s.bedrooms, bathrooms: s.bathrooms, sleeps: s.sleeps,
+        lat: near.lat + jit(), lng: near.lng + jit(), bedrooms: s.bedrooms, bathrooms: s.bathrooms, sleeps: s.sleeps,
         price_night: (s as unknown as Record<string, unknown>).price_night ?? null, image_url: s.image_url, description: s.description,
         rating: s.rating, review_count: s.review_count, submitted_by: null, status: "pending",
       };
