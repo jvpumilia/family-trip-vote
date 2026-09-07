@@ -164,7 +164,7 @@
     S.dests.forEach((d) => {
       const size = d.status !== "scored" ? 34 : 30 + Math.round((d.total / 100) * 26);
       const cls = d.status !== "scored" ? "pending" : (d.gate_pass ? "" : "nogate");
-      const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: "", html: `<div class="dest-marker ${cls}" style="width:${size}px;height:${size}px">${d.status === "scored" ? d.total : "…"}</div>`, iconSize: [size, size], iconAnchor: [size / 2, size / 2] }), zIndexOffset: 500 });
+      const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: "", html: `<div class="dest-marker ${cls}" style="width:${size}px;height:${size}px">${d.status === "scored" ? d.total : "…"}</div>`, iconSize: [size, size], iconAnchor: [size / 2, size / 2] }), zIndexOffset: 500 + (d.total || 0) * 10 });
       const n = S.props.filter((p) => p.destination_id === d.id).length;
       const nf = S.props.filter((p) => p.destination_id === d.id && p.is_finalist).length;
       m.bindPopup(`<b>${esc(d.name)}</b><br>${esc(d.region)} · <b>${d.total}</b>/100<br>${n} lodging added · ${nf} on the ballot<br><a href="#" data-open-dest="${d.id}">Full scorecard →</a>`);
