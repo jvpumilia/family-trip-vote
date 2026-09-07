@@ -1,9 +1,17 @@
 import { corsHeaders, json, err } from "../_shared/cors.ts";
 import { adminClient, requireUser } from "../_shared/supa.ts";
 import { scrape, geocode, milesBetween, stateAbbr, detectSource, canonicalUrl } from "../_shared/scrape.ts";
+import { elevationFt, elevationNote, MAX_ELEVATION_FT } from "../_shared/elevation.ts";
 import { askJson, extractListing, resolvePlace, findListings, FAMILY_CONTEXT, DEST_RUBRIC, PROP_RUBRIC, DEST_SCHEMA, PROP_SCHEMA, sumScores } from "../_shared/claude.ts";
 
 const MATCH_MILES = 45;
+
+/** Elevation is a hard health concern: cap the relevant criterion and make sure the text says why. */
+function applyElevationCap(scores: Record<string, { score: number; why: string }>, key: string, cap: number, elev: number | null) {
+  if (elev == null || elev <= MAX_ELEVATION_FT || !scores?.[key]) return;
+  if (scores[key].score > cap) scores[key].score = cap;
+  if (!/elevation|altitude|feet|ft\b/i.test(scores[key].why || "")) scores[key].why = `Elevation ${elev.toLocaleString()} ft is above the family's 5,000 ft health limit. ` + (scores[key].why || "");
+}
 
 function slugify(s: string) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
@@ -16,10 +24,12 @@ async function originsText(admin: ReturnType<typeof adminClient>, lat: number, l
 
 async function createDestination(admin: ReturnType<typeof adminClient>, city: string, state: string, lat: number, lng: number, userId: string | null, hint = "") {
   const originsInfo = await originsText(admin, lat, lng);
+  const elev = await elevationFt(lat, lng);
   const system = `You are the family's travel analyst. Score candidate destinations for a 14-person family reunion using the rubric exactly. Be honest and specific; the family would rather hear a weakness now than at check-in. Use what you know about the place as of your knowledge; if you are unsure of an inventory fact, say so in the why text.\n${FAMILY_CONTEXT}\n${DEST_RUBRIC}`;
-  const user = `Score this destination: ${city}, ${state} (lat ${lat.toFixed(3)}, lng ${lng.toFixed(3)}). ${hint}\n\nStraight-line distances from each household:\n${originsInfo}\n\nName the destination the way a travel planner would (e.g. "Gatlinburg / Pigeon Forge" rather than a single suburb). List 6-10 attractions and activities rated for THIS family (toddler through 11-year-old) including at least one rainy-day option. Give travel difficulty for all five households.`;
+  const user = `Score this destination: ${city}, ${state} (lat ${lat.toFixed(3)}, lng ${lng.toFixed(3)}). ${hint}\n${elevationNote(elev)}\n\nStraight-line distances from each household:\n${originsInfo}\n\nName the destination the way a travel planner would (e.g. "Gatlinburg / Pigeon Forge" rather than a single suburb). List 6-10 attractions and activities rated for THIS family (toddler through 11-year-old) including at least one rainy-day option. Give travel difficulty for all five households.`;
   const d = await askJson<Record<string, unknown>>(system, user, DEST_SCHEMA, 9000);
   const scores = d.scores as Record<string, { score: number; why: string }>;
+  applyElevationCap(scores, "june", 3, elev);
   const total = sumScores(scores);
   const name = String(d.name || city);
   let slug = slugify(name);
@@ -29,7 +39,7 @@ async function createDestination(admin: ReturnType<typeof adminClient>, city: st
     slug, name, region: String(d.region || `${city}, ${state}`), state: stateAbbr(String(d.state || state)) || String(d.state || state).slice(0, 40),
     lat, lng, summary: d.summary, pros: d.pros, cons: d.cons, scores, total,
     gate_pass: (scores.lodging?.score || 0) >= 10, travel: d.travel, attractions: d.attractions,
-    source: "ai", status: "scored", created_by: userId,
+    source: "ai", status: "scored", created_by: userId, elevation_ft: elev,
   };
   const { data: dest, error } = await admin.from("destinations").insert(row).select("*").single();
   if (error) throw new Error("Could not save destination: " + error.message);
@@ -128,7 +138,9 @@ Deno.serve(async (req) => {
       // jitter property pins slightly so several in one town don't stack
       const jit = () => (Math.random() - 0.5) * 0.06;
       const asAi = !!body.as_ai && !!profile?.is_admin;
+      const elevH = await elevationFt(geo.lat, geo.lng);
       const row = {
+        elevation_ft: elevH,
         ai_pick: asAi, ai_note: asAi ? (body.ai_note || null) : null,
         destination_id: dest.id, url, source: url ? detectSource(url) : "other", title, city, state,
         lat: geo.lat + jit(), lng: geo.lng + jit(),
@@ -156,7 +168,10 @@ Deno.serve(async (req) => {
       if (body.ai_note !== undefined && profile?.is_admin) await admin.from("properties").update({ ai_note: body.ai_note }).eq("id", prop.id);
       const { data: dest } = await admin.from("destinations").select("*").eq("id", prop.destination_id).single();
       const system = `You are the family's lodging analyst. Score one rental house for a 14-person family reunion using the rubric exactly. Base every score on the listing facts given; when a fact is missing, say so in the why text, score conservatively, and add it to the verify checklist. Never invent amenities.\n${FAMILY_CONTEXT}\n${PROP_RUBRIC}`;
+      let elevP = prop.elevation_ft ?? (prop.lat != null ? await elevationFt(prop.lat, prop.lng) : null);
+      if (elevP == null) elevP = dest.elevation_ft ?? null;
       const facts = {
+        elevation_ft: elevP, elevation_note: elevationNote(elevP),
         title: prop.title, url: prop.url, source: prop.source, city: prop.city, state: prop.state,
         bedrooms_listed: prop.bedrooms, bathrooms_listed: prop.bathrooms, sleeps_listed: prop.sleeps,
         price_per_night: prop.price_night, price_total_week: prop.price_total, rating: prop.rating, review_count: prop.review_count,
@@ -165,13 +180,17 @@ Deno.serve(async (req) => {
       const user_msg = `DESTINATION CONTEXT: ${dest.name} (${dest.region}). ${dest.summary || ""}\nDestination scores: ${JSON.stringify(dest.scores)}\n\nLISTING FACTS (from the listing page and the family member who added it):\n${JSON.stringify(facts, null, 2)}\n\nScore this lodging.`;
       const r = await askJson<Record<string, unknown>>(system, user_msg, PROP_SCHEMA, 6000);
       const scores = r.scores as Record<string, { score: number; why: string }>;
+      applyElevationCap(scores, "location", 3, elevP);
+      const flags = Array.isArray(r.red_flags) ? r.red_flags as string[] : [];
+      if (elevP != null && elevP > MAX_ELEVATION_FT && !flags.some((f) => /elevation|altitude/i.test(f))) flags.unshift(`Elevation ${elevP.toLocaleString()} ft: above the family's 5,000 ft health limit.`);
+      r.red_flags = flags;
       const total = sumScores(scores);
       const couple = Number(r.couple_rooms) || 0, kids = Number(r.kid_rooms) || 0;
       const gate = couple >= 5 && couple + kids >= 7;
       const upd = {
         scores, total, gate_pass: gate, ai_summary: r.ai_summary, red_flags: r.red_flags,
         verify_checklist: r.verify_checklist,
-        details: { ...(r.details as object), real_bedrooms: r.real_bedrooms, couple_rooms: couple, kid_rooms: kids, bed_plan: r.bed_plan },
+        details: { ...(r.details as object), real_bedrooms: r.real_bedrooms, couple_rooms: couple, kid_rooms: kids, bed_plan: r.bed_plan }, elevation_ft: elevP,
         status: "scored", updated_at: new Date().toISOString(),
       };
       const { data: saved, error } = await admin.from("properties").update(upd).eq("id", prop.id).select("*").single();
@@ -247,7 +266,7 @@ Deno.serve(async (req) => {
       const row = {
         ai_pick: true, ai_note: `Found by web search when ${dest.name} was added. ${body.why || ""}`.trim(),
         destination_id: dest.id, url: s.url, source: s.source, title: s.title, city: s.city || dest.region.split(",")[0], state: s.state || dest.state,
-        lat: near.lat + jit(), lng: near.lng + jit(), bedrooms: s.bedrooms, bathrooms: s.bathrooms, sleeps: s.sleeps,
+        lat: near.lat + jit(), lng: near.lng + jit(), elevation_ft: await elevationFt(near.lat, near.lng), bedrooms: s.bedrooms, bathrooms: s.bathrooms, sleeps: s.sleeps,
         price_night: (s as unknown as Record<string, unknown>).price_night ?? null, image_url: s.image_url, description: s.description,
         rating: s.rating, review_count: s.review_count, submitted_by: null, status: "pending",
       };
@@ -262,11 +281,13 @@ Deno.serve(async (req) => {
       const { data: dest } = await admin.from("destinations").select("*").eq("id", body.destination_id).single();
       if (!dest) return err("Not found", 404);
       const originsInfo = await originsText(admin, dest.lat, dest.lng);
+      const elevD = dest.elevation_ft ?? await elevationFt(dest.lat, dest.lng);
       const system = `You are the family's travel analyst. Score candidate destinations for a 14-person family reunion using the rubric exactly. Be honest and specific.\n${FAMILY_CONTEXT}\n${DEST_RUBRIC}`;
-      const u = `Re-score this destination: ${dest.name} (${dest.region}), lat ${dest.lat}, lng ${dest.lng}.\nStraight-line distances from each household:\n${originsInfo}\nList 6-10 attractions rated for this family, and travel difficulty for all five households.`;
+      const u = `Re-score this destination: ${dest.name} (${dest.region}), lat ${dest.lat}, lng ${dest.lng}.\n${elevationNote(elevD)}\nStraight-line distances from each household:\n${originsInfo}\nList 6-10 attractions rated for this family, and travel difficulty for all five households.`;
       const d = await askJson<Record<string, unknown>>(system, u, DEST_SCHEMA, 9000);
       const scores = d.scores as Record<string, { score: number; why: string }>;
-      const upd = { summary: d.summary, pros: d.pros, cons: d.cons, scores, total: sumScores(scores), gate_pass: (scores.lodging?.score || 0) >= 10, travel: d.travel, attractions: d.attractions, source: "ai", status: "scored", updated_at: new Date().toISOString() };
+      applyElevationCap(scores, "june", 3, elevD);
+      const upd = { summary: d.summary, pros: d.pros, cons: d.cons, scores, total: sumScores(scores), gate_pass: (scores.lodging?.score || 0) >= 10, travel: d.travel, attractions: d.attractions, source: dest.source === "packet" ? "packet" : "ai", status: "scored", updated_at: new Date().toISOString(), elevation_ft: elevD };
       const { data: saved, error } = await admin.from("destinations").update(upd).eq("id", dest.id).select("*").single();
       if (error) return err(error.message, 500);
       return json({ destination: saved });

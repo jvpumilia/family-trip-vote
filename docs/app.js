@@ -38,6 +38,8 @@
   const normUrl = (u) => (u || "").toLowerCase().replace(/^https?:\/\/(www\.)?/, "").replace(/[?#].*$/, "").replace(/\/$/, "");
   const aiPicks = () => S.props.filter((p) => p.ai_pick);
   const isDq = (p) => p.avail_status === "unavailable";
+  const maxElev = () => S.settings.trip?.max_elevation_ft ?? 5000;
+  const elevPill = (ft) => ft == null ? "" : ft > maxElev() ? `<i class="pill warn" title="Above the family's ${maxElev().toLocaleString()} ft health limit">⛰ ${ft.toLocaleString()} ft: too high</i>` : ft > maxElev() - 1000 ? `<i class="pill sun" title="Borderline for the ${maxElev().toLocaleString()} ft limit">⛰ ${ft.toLocaleString()} ft</i>` : `<i class="pill neutral">⛰ ${ft.toLocaleString()} ft</i>`;
   const tripWeek = () => { const t = S.settings.trip || {}; return t.check_in && t.check_out ? `${fmtDate(t.check_in)} to ${fmtDate(t.check_out)}` : "our June 2027 week (dates not set yet)"; };
   const availBadge = (p, small) => isDq(p) ? `<i class="pill warn">Not available: disqualified</i>` : p.avail_status === "available" ? `<i class="pill ok">Availability confirmed</i>` : (small ? "" : `<i class="pill neutral">Availability unchecked</i>`);
   async function setAvailability(id, status, note) {
@@ -210,7 +212,7 @@
       const fin = S.props.filter((p) => p.destination_id === d.id && p.is_finalist).length;
       const n = S.props.filter((p) => p.destination_id === d.id).length;
       return `<div class="rank-row"><div class="n">${i + 1}</div>
-        <div><div class="t"><a href="#" data-open-dest="${d.id}">${esc(d.name)}</a>${d.gate_pass ? "" : ' <i class="pill warn">gate ✗</i>'}</div>
+        <div><div class="t"><a href="#" data-open-dest="${d.id}">${esc(d.name)}</a>${d.gate_pass ? "" : ' <i class="pill warn">gate ✗</i>'}${d.elevation_ft > maxElev() ? ' <i class="pill warn">⛰ too high</i>' : ""}</div>
         <div class="s">${esc(d.region)} · ${fin ? `<i class="pill ok">on the ballot</i> ${fin} finalist${fin > 1 ? "s" : ""}` : n ? `${n} house${n > 1 ? "s" : ""} added, none starred` : "no house yet"}</div></div>
         <div class="sc">${d.total}<small>/100</small></div></div>`;
     }).join("") : `<p class="empty">Nothing yet.</p>`;
@@ -259,7 +261,7 @@
     el.innerHTML = S.dests.map((d, i) => `<div class="card dest-card">
       <div class="score-badge ${d.gate_pass ? "" : "low"}">${d.total}<small>/100</small></div>
       <div>
-        <div class="title-row"><h3>#${i + 1} ${esc(d.name)}</h3><span class="muted">${esc(d.region)}${d.source === "packet" ? " · from the packet" : ""}</span></div>
+        <div class="title-row"><h3>#${i + 1} ${esc(d.name)}</h3><span class="muted">${esc(d.region)}${d.source === "packet" ? " · from the packet" : ""} ${elevPill(d.elevation_ft)}</span></div>
         ${d.gate_pass ? "" : `<p class="msg" style="display:inline-block">Fails the lodging gate (under 10/25)</p>`}
         <p>${esc(d.summary || "")}</p>
         ${scoreBars(d.scores, DEST_CRITERIA, false)}
@@ -271,7 +273,8 @@
   }
   function destModal(d) {
     const ps = S.props.filter((p) => p.destination_id === d.id).sort((a, b) => b.total - a.total);
-    openModal(`<h2>${esc(d.name)}</h2><p class="muted">${esc(d.region)} · <b>${d.total}/100</b>${d.gate_pass ? "" : " · fails the lodging gate"}</p>
+    openModal(`<h2>${esc(d.name)}</h2><p class="muted">${esc(d.region)} · <b>${d.total}/100</b>${d.gate_pass ? "" : " · fails the lodging gate"} ${elevPill(d.elevation_ft)}</p>
+      ${d.elevation_ft > maxElev() ? `<p class="msg">Elevation ${d.elevation_ft.toLocaleString()} ft is above the family's ${maxElev().toLocaleString()} ft health limit. Sleeping this high is a problem for some of us; day trips higher are fine.</p>` : ""}
       <p>${esc(d.summary || "")}</p>
       <div class="row"><div><div class="section-title">Why it might win</div><ul class="list">${(d.pros || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>
       <div><div class="section-title">Why it might lose</div><ul class="list">${(d.cons || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div></div>
@@ -295,7 +298,7 @@
       <div class="body">
         <div class="title">${esc(p.title)}</div>
         <div class="meta">${esc(d?.name || p.city)} · ${p.bedrooms ?? "?"} BR · ${p.bathrooms ?? "?"} BA · sleeps ${p.sleeps ?? "?"}</div>
-        ${isDq(p) || p.avail_status === "available" ? `<div class="meta">${availBadge(p, true)}</div>` : ""}
+        ${isDq(p) || p.avail_status === "available" || p.elevation_ft > maxElev() ? `<div class="meta">${availBadge(p, true)} ${p.elevation_ft > maxElev() ? elevPill(p.elevation_ft) : ""}</div>` : ""}
         ${S.avail.some((a) => a.property_id === p.id) ? strip(p) : ""}
         <div class="foot"><span class="meta">${p.price_night ? money(p.price_night) + "/night" : ""}${p.price_total ? " · " + money(p.price_total) + " week" : ""}</span>
         <span class="mini-score">${pending ? "…" : p.total}<small>/100</small></span></div>
@@ -323,6 +326,7 @@
       <h2>${esc(p.title)}</h2>
       <p class="muted">${esc(d?.name || "")} · ${esc(p.city || "")}, ${esc(p.state || "")}${p.url ? ` · <a href="${esc(p.url)}" target="_blank" rel="noopener">Open the listing ↗</a>` : ""}</p>
       <div class="kv">
+        ${p.elevation_ft != null ? `<b>Elevation</b><span>${p.elevation_ft.toLocaleString()} ft ${p.elevation_ft > maxElev() ? `<i class="pill warn">above our ${maxElev().toLocaleString()} ft health limit</i>` : ""}</span>` : ""}
         <b>Bedrooms</b><span>${p.bedrooms ?? "?"} listed${det.real_bedrooms != null && det.real_bedrooms !== p.bedrooms ? ` · scorer thinks ${det.real_bedrooms} are real` : ""}</span>
         <b>Bathrooms</b><span>${p.bathrooms ?? "?"}</span>
         <b>Sleeps</b><span>${p.sleeps ?? "?"}</span>
@@ -685,7 +689,7 @@
       <div>
         <div class="title-row"><h3>${rank ? `#${rank} ` : ""}<a href="#" data-open-prop="${p.id}">${esc(p.title)}</a> <i class="pill ai">AI Selected</i></h3><span class="mini-score">${p.status === "scored" ? p.total : "…"}<small>/100</small></span></div>
         <div class="muted tiny">${esc(d?.name || "")} · ${p.bedrooms ?? "?"} BR · ${p.bathrooms ?? "?"} BA · sleeps ${p.sleeps ?? "?"}${p.price_night ? " · " + money(p.price_night) + "/night" : ""}${p.rating ? ` · ★ ${p.rating}${p.review_count ? ` (${p.review_count})` : ""}` : ""}
-          ${p.gate_pass ? '<i class="pill ok">sleeps us right ✓</i>' : '<i class="pill warn">bed plan short ✗</i>'} ${availBadge(p, true)}
+          ${p.gate_pass ? '<i class="pill ok">sleeps us right ✓</i>' : '<i class="pill warn">bed plan short ✗</i>'} ${availBadge(p, true)} ${p.elevation_ft > maxElev() ? elevPill(p.elevation_ft) : ""}
           ${matches.length ? `<i class="pill match">Also picked by ${matches.map((m) => esc(householdOf(m.submitted_by))).filter((v, i, a) => a.indexOf(v) === i).join(", ")}</i>` : ""}</div>
         <p>${esc(p.ai_note || p.ai_summary || "")}</p>
         ${det.bed_plan ? `<p class="tiny"><b>Beds:</b> ${esc(det.bed_plan)}</p>` : ""}
