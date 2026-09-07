@@ -178,6 +178,22 @@
       m.addTo(props);
     });
     if (S.selectedDest) { const d = S.dests.find((x) => x.id === S.selectedDest.id); if (d) selectDest(d); else { lines.clearLayers(); $("#map-info").innerHTML = ""; } }
+    renderLanding();
+  }
+  function renderLanding() {
+    $("#landing-dests").innerHTML = S.dests.length ? S.dests.map((d, i) => {
+      const fin = S.props.filter((p) => p.destination_id === d.id && p.is_finalist).length;
+      const n = S.props.filter((p) => p.destination_id === d.id).length;
+      return `<div class="rank-row"><div class="n">${i + 1}</div>
+        <div><div class="t"><a href="#" data-open-dest="${d.id}">${esc(d.name)}</a>${d.gate_pass ? "" : ' <i class="pill warn">gate ✗</i>'}</div>
+        <div class="s">${esc(d.region)} · ${fin ? `<i class="pill ok">on the ballot</i> ${fin} finalist${fin > 1 ? "s" : ""}` : n ? `${n} house${n > 1 ? "s" : ""} added, none starred` : "no house yet"}</div></div>
+        <div class="sc">${d.total}<small>/100</small></div></div>`;
+    }).join("") : `<p class="empty">Nothing yet.</p>`;
+    const top = S.props.filter((p) => p.status === "scored").sort((a, b) => b.total - a.total).slice(0, 5);
+    $("#landing-props").innerHTML = top.length ? top.map((p, i) => `<div class="rank-row"><div class="n">${i + 1}</div>
+        <div><div class="t"><a href="#" data-open-prop="${p.id}">${esc(p.title)}</a>${p.is_finalist ? ' <i class="pill sun">★</i>' : ""}${p.gate_pass ? "" : ' <i class="pill warn">bed plan ✗</i>'}</div>
+        <div class="s">${esc(destOf(p)?.name || p.city || "")} · ${p.bedrooms ?? "?"} BR · ${p.bathrooms ?? "?"} BA${p.price_night ? " · " + money(p.price_night) + "/night" : ""}</div></div>
+        <div class="sc">${p.total}<small>/100</small></div></div>`).join("") : `<p class="empty">No houses scored yet. Add one on the My picks tab.</p>`;
   }
   function selectDest(d) {
     S.selectedDest = d;
@@ -395,17 +411,18 @@
       }
       btn.disabled = false;
     };
-    $("#nominate-form").onsubmit = async (e) => {
+    $$("form.nominate-form").forEach((form) => form.onsubmit = async (e) => {
       e.preventDefault();
-      const f = Object.fromEntries(new FormData(e.target).entries());
-      const b = e.target.querySelector("button"); b.disabled = true; b.textContent = "Scoring (30–60 s)…";
+      const f = Object.fromEntries(new FormData(form).entries());
+      const b = form.querySelector("button"); b.disabled = true; b.textContent = "Scoring (30–60 s)…";
       try {
         const r = await callFn("ingest", { action: "nominate", ...f });
-        toast(r.destination_created ? `Added and scored: ${r.destination.name}` : `That's already on the list as ${r.destination.name}`);
-        e.target.reset(); await loadAll(); renderAll(); showTab("destinations");
+        toast(r.destination_created ? `Added and scored: ${r.destination.name}` : `That's already on the list as ${r.destination.name}`, 5000);
+        form.reset(); await loadAll(); renderAll(); showTab("destinations");
+        if (r.destination_created) destModal(S.dests.find((d) => d.id === r.destination.id) || r.destination);
       } catch (err) { toast(err.message, 6000); }
       b.disabled = false; b.textContent = "Score this destination";
-    };
+    });
 
     // global click delegation
     document.addEventListener("click", async (e) => {

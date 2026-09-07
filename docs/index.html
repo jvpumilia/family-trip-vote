@@ -73,12 +73,26 @@
       <span><i class="dot home"></i> Where we're coming from</span>
       <span class="diffkey">Travel: <i class="pill d1">easy</i> <i class="pill d5">medium</i> <i class="pill d8">hard</i></span>
     </div>
+    <div class="two-col even" id="landing">
+      <div class="card"><h3>Destinations, best first</h3><div id="landing-dests"></div></div>
+      <div class="card"><h3>Top 5 houses so far</h3><div id="landing-props"></div></div>
+    </div>
   </section>
 
   <section class="panel" data-panel="destinations" hidden>
     <div class="panel-head">
       <h2>Destinations, ranked</h2>
       <p class="muted">Every place is scored out of 100 on the same seven things from the decision packet. Lodging is a gate: under 10 there and it's out no matter what.</p>
+      <div class="card nominate-card">
+        <b>Have a place in mind that isn't here?</b>
+        <form class="nominate-form stack" style="margin-top:.5em">
+          <div class="row">
+            <label>City / town <input name="city" required placeholder="e.g. Wisconsin Dells"></label>
+            <label>State <input name="state" required maxlength="20" placeholder="e.g. WI"></label>
+          </div>
+          <div class="row"><button class="btn primary" type="submit">Score this destination</button><span class="muted tiny" style="align-self:center">Scored the same way as the rest. Add a house there later to get it on the ballot.</span></div>
+        </form>
+      </div>
     </div>
     <div id="dest-list" class="cards"></div>
   </section>
@@ -142,11 +156,11 @@
         </form>
         <details class="nominate">
           <summary>Just want to suggest a place, no house yet?</summary>
-          <form id="nominate-form" class="stack">
-            <p class="muted tiny">It gets scored and shows on the map, but it can't be voted on until someone adds a house there.</p>
+          <form class="nominate-form stack">
+            <p class="muted tiny">It gets scored on the same seven criteria and shows on the map, but it can't be voted on until someone adds a house there.</p>
             <div class="row">
-              <label>City / town <input name="city" required></label>
-              <label>State <input name="state" required maxlength="20"></label>
+              <label>City / town <input name="city" required placeholder="e.g. Wisconsin Dells"></label>
+              <label>State <input name="state" required maxlength="20" placeholder="e.g. WI"></label>
             </div>
             <button class="btn" type="submit">Score this destination</button>
           </form>
