@@ -132,6 +132,7 @@
         .on("postgres_changes", { event: "*", schema: "public", table: "votes" }, refresh).subscribe();
     }
     renderAll();
+    resumePendingAi();
   }
 
   function renderAll() {
@@ -180,6 +181,10 @@
       m.on("click", () => selectDest(d));
       m.addTo(dests);
     });
+    if (!S.mapFitted && S.dests.length) {
+      const pts = [...S.dests.map((d) => [d.lat, d.lng]), ...S.origins.map((o) => [o.lat, o.lng])];
+      S.map.fitBounds(pts, { padding: [30, 30], maxZoom: 5 }); S.mapFitted = true;
+    }
     S.props.forEach((p) => {
       if (p.lat == null) return;
       const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: "", html: `<div class="prop-marker ${p.is_finalist ? "finalist" : ""}" style="width:16px;height:16px"></div>`, iconSize: [16, 16], iconAnchor: [8, 16] }), zIndexOffset: 300 });
@@ -416,6 +421,7 @@
           await loadAll(); renderAll();
           await callFn("ingest", { action: "score", property_id: r.property.id });
           step(`<span class="step done">Placed in ${esc(r.destination.name)}</span><span class="step done">Scored</span>`);
+          if (r.destination_created) prospectDestination(r.destination);
         }
         await loadAll(); renderAll();
         toast("Done. It's on the map and in the lodging list.");
@@ -433,9 +439,9 @@
       const b = form.querySelector("button"); b.disabled = true; b.textContent = "Scoring (30–60 s)…";
       try {
         const r = await callFn("ingest", { action: "nominate", ...f });
-        toast(r.destination_created ? `Added and scored: ${r.destination.name}` : `That's already on the list as ${r.destination.name}`, 5000);
+        toast(r.destination_created ? `Added and scored: ${r.destination.name}${r.resolved ? ` (${r.resolved})` : ""}` : `That's already on the list as ${r.destination.name}`, 6000);
         form.reset(); await loadAll(); renderAll(); showTab("destinations");
-        if (r.destination_created) destModal(S.dests.find((d) => d.id === r.destination.id) || r.destination);
+        if (r.destination_created) { destModal(S.dests.find((d) => d.id === r.destination.id) || r.destination); prospectDestination(r.destination); }
       } catch (err) { toast(err.message, 6000); }
       b.disabled = false; b.textContent = "Score this destination";
     });
@@ -523,6 +529,38 @@
       else toast("Vote saved. You can change it any time before the deadline.");
       await loadAll(); renderAll();
     };
+  }
+
+  // ---------- automatic lodging search for new destinations ----------
+  async function prospectDestination(dest) {
+    try {
+      toast(`New destination. Searching the web for 7-bedroom houses in ${dest.name}… (a minute or two)`, 8000);
+      const { candidates = [], skipped } = await callFn("ingest", { action: "prospect", destination_id: dest.id });
+      if (skipped || !candidates.length) { if (!skipped) toast(`No suitable houses found automatically for ${dest.name}. Add one yourself if you know of it.`, 6000); return; }
+      const ids = [];
+      for (const c of candidates) {
+        try { const r = await callFn("ingest", { action: "prospect_add", destination_id: dest.id, url: c.url, why: c.why }); if (r.property_id) ids.push(r.property_id); } catch (e) { console.warn("prospect_add", e.message); }
+      }
+      await loadAll(); renderAll();
+      if (!ids.length) { toast(`Found listings for ${dest.name} but none passed the bedroom check.`, 6000); return; }
+      toast(`Found ${ids.length} house${ids.length > 1 ? "s" : ""} in ${dest.name}; scoring now…`, 6000);
+      await scorePending(ids);
+      toast(`AI Selected houses for ${dest.name} are ready (see the AI Selected tab).`, 7000);
+    } catch (e) { toast("Automatic house search hit a snag: " + e.message, 7000); }
+  }
+  async function scorePending(ids) {
+    for (const id of ids) {
+      try { await callFn("ingest", { action: "score", property_id: id }); } catch (e) { console.warn("score", e.message); }
+      await loadAll(); renderAll();
+    }
+  }
+  // safety net: AI picks left pending (someone closed the tab mid-run) get scored when anyone loads the page
+  let resumed = false;
+  function resumePendingAi() {
+    if (resumed) return;
+    const stale = S.props.filter((p) => p.ai_pick && p.status === "pending" && Date.now() - new Date(p.updated_at).getTime() > 3 * 60 * 1000).map((p) => p.id);
+    if (!stale.length) return;
+    resumed = true; scorePending(stale);
   }
 
   // ---------- AI recommendations ----------

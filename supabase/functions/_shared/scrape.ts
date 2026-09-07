@@ -179,8 +179,8 @@ async function readerBackup(url: string, out: Scraped): Promise<boolean> {
 }
 
 /** Free geocoder (OpenStreetMap Nominatim). One call per submission, so well inside their usage policy. */
-export async function geocode(q: string): Promise<{ lat: number; lng: number; display: string } | null> {
-  const u = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=${encodeURIComponent(q)}`;
+export async function geocode(q: string, countryCodes?: string): Promise<{ lat: number; lng: number; display: string } | null> {
+  const u = `https://nominatim.openstreetmap.org/search?format=json&limit=1${countryCodes ? `&countrycodes=${countryCodes}` : ""}&q=${encodeURIComponent(q)}`;
   const res = await fetch(u, { headers: { "User-Agent": "family-trip-vote/1.0 (family reunion planning site)" } });
   if (!res.ok) return null;
   const arr = await res.json();

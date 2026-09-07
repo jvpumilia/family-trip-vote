@@ -23,6 +23,8 @@ DESTINATION RUBRIC (100 points). Score each criterion as an integer.
 6. overflow (max 5) - late-adding relatives can book something comparable within 10 minutes.
 7. june (max 10) - price, heat, crowding and weather risk in June specifically.
 
+If the destination is outside the United States, account for passports for all 14 (including the children), customs and immigration time, and whether international nonstops exist from each household's airports; say so plainly in the travel notes and the cons.
+
 TRAVEL DIFFICULTY per origin household: difficulty is an integer 1 (trivial) to 10 (brutal). Consider nonstop availability from that household's airports, flight time, drive time after landing, total door-to-door hours, connections, and hours a two-year-old spends in a car seat. Roughly: 1-2 = under 4 hours door to door or a short drive; 3-4 = one nonstop plus under an hour of driving; 5-6 = one nonstop plus a long drive, or an all-day drive; 7-8 = a connection or 9+ hours; 9-10 = a connection plus a long drive, 10+ hours.
 `;
 
@@ -210,4 +212,73 @@ export async function extractListing(url: string, text: string): Promise<Extract
   if (res.stop_reason === "refusal") return null;
   const t = (res.content as Array<{ type: string; text?: string }>).filter((b) => b.type === "text").map((b) => b.text || "").join("");
   try { return JSON.parse(t) as Extracted; } catch { return null; }
+}
+
+export const PLACE_SCHEMA = {
+  type: "object", additionalProperties: false,
+  required: ["understood", "place_name", "locality", "region", "region_code", "country", "country_code", "lat", "lng", "kind", "hint"],
+  properties: {
+    understood: { type: "boolean", description: "false if the text is not a real place you can identify" },
+    place_name: { type: "string", description: "What the family most likely means, e.g. 'Banff National Park', 'Walt Disney World', 'Yellowstone National Park'" },
+    locality: { type: "string", description: "The best base town for a 14-person rental near that place, e.g. 'Canmore', 'Kissimmee', 'West Yellowstone'" },
+    region: { type: "string", description: "State or province name" },
+    region_code: { type: "string", description: "Two-letter state/province code, e.g. 'AB', 'FL', 'MT'" },
+    country: { type: "string" },
+    country_code: { type: "string", description: "ISO 2-letter, e.g. 'US', 'CA'" },
+    lat: { type: "number", description: "Latitude of the base town" },
+    lng: { type: "number" },
+    kind: { type: "string", enum: ["town", "national park", "theme park / resort", "lake / beach", "region", "other"] },
+    hint: { type: "string", description: "One sentence for the destination scorer: what the place is and where a group would actually stay" },
+  },
+};
+export type Place = { understood: boolean; place_name: string; locality: string; region: string; region_code: string; country: string; country_code: string; lat: number; lng: number; kind: string; hint: string };
+
+/** Turn whatever the family typed ("banff canada", "yellowstone", "disney") into a concrete base town. */
+export async function resolvePlace(text: string): Promise<Place | null> {
+  const params: Record<string, unknown> = {
+    model: Deno.env.get("CLAUDE_EXTRACT_MODEL") || "claude-sonnet-5",
+    max_tokens: 600,
+    system: "You resolve informal place names into a concrete destination for a family renting a large vacation house. Pick the town where a 7-bedroom rental would realistically be, near what they mean. Coordinates should be your best knowledge for that town.",
+    messages: [{ role: "user", content: `The family typed: "${text}"` }],
+    output_config: { effort: "low", format: { type: "json_schema", schema: PLACE_SCHEMA } },
+  };
+  // deno-lint-ignore no-explicit-any
+  const res = await (client.beta.messages as any).create(params);
+  if (res.stop_reason === "refusal") return null;
+  const t = (res.content as Array<{ type: string; text?: string }>).filter((b) => b.type === "text").map((b) => b.text || "").join("");
+  try { const p = JSON.parse(t) as Place; return p.understood ? p : null; } catch { return null; }
+}
+
+/** Search the web for specific 7+ bedroom rental listings near a destination. Returns up to `max` {url, why}. */
+export async function findListings(destName: string, locality: string, region: string, country: string, max = 3): Promise<Array<{ url: string; why: string }>> {
+  const params: Record<string, unknown> = {
+    model: Deno.env.get("CLAUDE_SEARCH_MODEL") || "claude-sonnet-5",
+    max_tokens: 1500,
+    system: `You find specific vacation-rental listing pages for a 14-person family reunion (five couples plus kids 11, 8, 4 and 2). They need seven real bedrooms: five rooms with a king, queen or two fulls, plus two kids' rooms where bunks are fine. Sofa beds and lofts do not count. Prefer listings with private pools, game rooms or theaters. Return ONLY listing pages for one specific house: Airbnb "/rooms/<id>" URLs, VRBO "/<id>" URLs, or a local manager's page for one named property. Never return search-result pages, city pages, blogs or aggregators.\n${FAMILY_CONTEXT}`,
+    messages: [{ role: "user", content: `Find up to ${max + 2} of the best 7+ bedroom rental houses near ${locality}, ${region}, ${country} (destination: ${destName}) for June 2027. Run at most four quick searches (for example "airbnb 8 bedroom ${locality}", "vrbo 7 bedroom ${locality}", "${locality} large group cabin 7 bedroom"). Do NOT open pages; judge from result titles and snippets (Airbnb titles state bedroom counts). Then answer with a JSON array only: [{"url": "...", "why": "one sentence: bedrooms, baths, standout amenities, price if seen"}]` }],
+    tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 4 }],
+    output_config: { effort: "low" },
+  };
+  // deno-lint-ignore no-explicit-any
+  const res = await (client.beta.messages as any).create(params, { timeout: 110_000, maxRetries: 0 });
+  const text = (res.content as Array<{ type: string; text?: string }>).filter((b) => b.type === "text").map((b) => b.text || "").join("\n");
+  const m = text.match(/\[[\s\S]*\]/);
+  let arr: Array<{ url: string; why: string }> = [];
+  if (m) { try { arr = JSON.parse(m[0]); } catch { arr = []; } }
+  if (!arr.length) {
+    // fall back to any listing-looking URLs in the text
+    const urls = Array.from(new Set(text.match(/https?:\/\/[^\s)"'<>]+/g) || []));
+    arr = urls.map((u) => ({ url: u, why: "" }));
+  }
+  const looksLikeListing = (u: string) => {
+    let host = ""; try { host = new URL(u).hostname.toLowerCase(); } catch { return false; }
+    if (/blog|guide|tripadvisor|expedia|booking\.com|hotels\.com|cozycozy|hichee|airdna|taxi|news|reddit|facebook|pinterest|youtube/i.test(u)) return false;
+    if (/airbnb\./.test(host)) return /\/rooms\/\d+/.test(u);
+    if (/vrbo\.|homeaway\./.test(host)) return /\/(p?\d{5,}(ha|vb)?)(?:[/?#]|$)/.test(u) && !/\/vacation-rentals\//.test(u);
+    // a property manager's page for one named house
+    return /cabin|rental|lodg|vacation|retreat|villa|resort|chalet|estate|stay/i.test(host + u) && !/\/(cabins|properties|rentals|homes)\/?$/i.test(u) && !/\/s\/|\/stays\/?$|\/vacation-rentals\/|search|results|category|amenit|bedroom-cabins/i.test(u);
+  };
+  const kept = arr.filter((x) => x && typeof x.url === "string" && looksLikeListing(x.url)).slice(0, max);
+  (kept as unknown as { _raw?: string })._raw = text.slice(0, 1500) + ` | stop=${res.stop_reason} blocks=${(res.content as Array<{ type: string }>).map((b) => b.type).join(",")}`;
+  return kept;
 }

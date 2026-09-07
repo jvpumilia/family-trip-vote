@@ -112,11 +112,8 @@
       <div class="card nominate-card">
         <b>Have a place in mind that isn't here?</b>
         <form class="nominate-form stack" style="margin-top:.5em">
-          <div class="row">
-            <label>City / town <input name="city" required placeholder="e.g. Wisconsin Dells"></label>
-            <label>State <input name="state" required maxlength="20" placeholder="e.g. WI"></label>
-          </div>
-          <div class="row"><button class="btn primary" type="submit">Score this destination</button><span class="muted tiny" style="align-self:center">Scored the same way as the rest. Add a house there later to get it on the ballot.</span></div>
+          <label>Where? <input name="place" required placeholder="e.g. Banff, Yellowstone, Disney World, Outer Banks"></label>
+          <div class="row"><button class="btn primary" type="submit">Score this destination</button><span class="muted tiny" style="align-self:center">A town, a park, a resort, another country: the site figures out the region. Scored the same way as the rest; add a house there later to get it on the ballot.</span></div>
         </form>
       </div>
     </div>
@@ -162,7 +159,7 @@
           <label>Name of the house <input name="title" required></label>
           <div class="row">
             <label>City / town <input name="city" required placeholder="e.g. Pigeon Forge"></label>
-            <label>State <input name="state" required placeholder="e.g. TN" maxlength="20"></label>
+            <label>State / province <input name="state" required placeholder="e.g. TN or AB" maxlength="40"></label>
           </div>
           <div class="row three">
             <label>Bedrooms <small class="muted">(count bunk rooms; not lofts or sofas)</small> <input name="bedrooms" type="number" min="1" max="30" required></label>
@@ -183,11 +180,8 @@
         <details class="nominate">
           <summary>Just want to suggest a place, no house yet?</summary>
           <form class="nominate-form stack">
-            <p class="muted tiny">It gets scored on the same seven criteria and shows on the map, but it can't be voted on until someone adds a house there.</p>
-            <div class="row">
-              <label>City / town <input name="city" required placeholder="e.g. Wisconsin Dells"></label>
-              <label>State <input name="state" required maxlength="20" placeholder="e.g. WI"></label>
-            </div>
+            <p class="muted tiny">Type anywhere: a town, a national park, a resort, another country. The site works out the region, puts it on the map and scores it on the same seven criteria. It can't be voted on until someone adds a house there.</p>
+            <label>Where? <input name="place" required placeholder="e.g. Banff, Yellowstone, Disney World, Wisconsin Dells"></label>
             <button class="btn" type="submit">Score this destination</button>
           </form>
         </details>
