@@ -10,6 +10,7 @@ THE FAMILY AND THE TRIP
 - Seven nights in June 2027, Saturday to Saturday. Must be booked by 30 September 2026.
 - HARD REQUIREMENT, the sleeping plan: seven real, enclosed bedrooms with real beds. Five are COUPLE ROOMS (five couples, each sharing a bed): each needs a king, a queen, or two full beds. Two are KIDS' ROOMS (the two households travelling with the children, Gig Harbor and Southwest Florida, each need a second room): bunk beds are fine there, and two kids sharing one bed need at least a queen. So one or two bunk-bed bedrooms are welcome and count toward the seven. Lofts, open sleeping nooks and pull-out couches do not count as bedrooms. Extra bedrooms beyond seven are margin, not waste.
 - Stated goals, in the family's words: (1) a house that never becomes a point of contention, (2) low travel burden for everyone, weighing the longest trips most (Gig Harbor is farthest and Southwest Florida has fewer nonstops), with as few connections and car-seat hours as possible, (3) kid activities that work for a toddler AND an eleven-year-old, plus rainy-day options, (4) nature / national-park access.
+- HEALTH LIMIT: members of the family cannot stay above 5,000 feet of elevation. A base town or house above 5,000 ft is a serious problem (flag it prominently, score it down hard); 4,000 to 5,000 ft is borderline and should be mentioned. Day trips higher are fine; sleeping high is not.
 - Also matters: six or more bathrooms, two refrigerators and two dishwashers, a table that seats 14, parking for three or more cars, on-site kid amenities (pool, game room, theater, playground), overflow lodging within 10 minutes for late-adding relatives, and June heat, crowds and cost.
 `;
 
@@ -21,7 +22,7 @@ DESTINATION RUBRIC (100 points). Score each criterion as an integer.
 4. kids (max 15) - activity range for ages 2 through 11, must work for a toddler AND an 11-year-old, plus rainy-day options.
 5. nature (max 15) - 15 = adjacent to a national park; 8 = strong state park or national forest; 4 = token.
 6. overflow (max 5) - late-adding relatives can book something comparable within 10 minutes.
-7. june (max 10) - price, heat, crowding and weather risk in June specifically.
+7. june (max 10) - price, heat, crowding, weather risk in June, AND elevation: a base town above 5,000 ft can score at most 3 here; 4,000-5,000 ft loses 2-3 points.
 
 If the destination is outside the United States, account for passports for all 14 (including the children), customs and immigration time, and whether international nonstops exist from each household's airports; say so plainly in the travel notes and the cons.
 
@@ -34,7 +35,7 @@ LODGING RUBRIC (100 points). Score each criterion as an integer.
 2. bathrooms (max 10) - 7+ full baths = 10; 6 = 8; 5 = 5; 4 or fewer = 2.
 3. kid_amenities (max 15) - private pool (indoor pool is best for June storms), hot tub, game room/arcade, theater, playground, resort water park access.
 4. kitchen_gathering (max 10) - two refrigerators, two dishwashers, table for 14, a gathering room that holds everyone.
-5. location (max 10) - minutes to the main attractions, the park, and the airport; traffic; steepness/remoteness with a toddler.
+5. location (max 10) - minutes to the main attractions, the park, and the airport; traffic; steepness/remoteness with a toddler; AND elevation: a house above 5,000 ft can score at most 3 here and must be red-flagged.
 6. value (max 15) - June price per bedroom-night against the local market and the family's budget sense; unknown price = 8 with a note.
 7. reviews (max 10) - rating x volume; a new listing with no reviews scores 4 and gets a red flag.
 8. logistics (max 5) - parking for 3+ cars, stairs/decks/loft safety for a 2- and 4-year-old, crib/high chair, check-in flexibility.
