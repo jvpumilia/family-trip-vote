@@ -171,11 +171,12 @@ const PROP_MAX: Record<string, number> = { bedrooms: 25, bathrooms: 10, kid_amen
 export function sumScores(scores: Record<string, { score: number }>): number {
   let total = 0;
   for (const [k, s] of Object.entries(scores || {})) {
+    if (k === "elevation") { s.score = Math.max(-15, Math.min(0, Math.round(Number(s?.score) || 0))); total += s.score; continue; } // flat penalty, negative
     const max = DEST_MAX[k] ?? PROP_MAX[k] ?? 100;
     const v = Math.max(0, Math.min(max, Math.round(Number(s?.score) || 0)));
     s.score = v; total += v;
   }
-  return total;
+  return Math.max(0, total);
 }
 
 const nullable = (t: string, description = "") => ({ type: [t, "null"], description });

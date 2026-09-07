@@ -250,7 +250,9 @@
     return `<div class="ballot-line"><i class="pill neutral">Not on the ballot</i> No house added here yet, so it can't be voted on</div>`;
   }
   function scoreBars(scores, criteria, withWhy) {
-    return `<div class="bars">` + criteria.map(([k, label, max]) => {
+    const crit = scores?.elevation ? [...criteria, ["elevation", "Elevation penalty", 0]] : criteria;
+    return `<div class="bars">` + crit.map(([k, label, max]) => {
+      if (k === "elevation") { const s = scores.elevation; return `<div style="color:var(--d9)">${esc(label)}</div><div></div><div style="color:var(--d9);font-weight:700">${s.score}</div>` + (withWhy && s.why ? `<div class="why">${esc(s.why)}</div>` : ""); }
       const s = scores?.[k] || {}; const v = Number(s.score) || 0;
       return `<div>${esc(label)}</div><div class="bar"><i class="${k === "lodging" || k === "bedrooms" ? "gate" : ""}" style="width:${(v / max) * 100}%"></i></div><div>${v}/${max}</div>` + (withWhy && s.why ? `<div class="why">${esc(s.why)}</div>` : "");
     }).join("") + `</div>`;

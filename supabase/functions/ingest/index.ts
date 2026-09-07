@@ -8,9 +8,15 @@ const MATCH_MILES = 45;
 
 /** Elevation is a hard health concern: cap the relevant criterion and make sure the text says why. */
 function applyElevationCap(scores: Record<string, { score: number; why: string }>, key: string, cap: number, elev: number | null) {
-  if (elev == null || elev <= MAX_ELEVATION_FT || !scores?.[key]) return;
-  if (scores[key].score > cap) scores[key].score = cap;
-  if (!/elevation|altitude|feet|ft\b/i.test(scores[key].why || "")) scores[key].why = `Elevation ${elev.toLocaleString()} ft is above the family's 5,000 ft health limit. ` + (scores[key].why || "");
+  if (elev == null || !scores) return;
+  delete scores.elevation;
+  if (elev <= MAX_ELEVATION_FT) return;
+  if (scores[key]) {
+    if (scores[key].score > cap) scores[key].score = cap;
+    if (!/elevation|altitude|feet|ft\b/i.test(scores[key].why || "")) scores[key].why = `Elevation ${elev.toLocaleString()} ft is above the family's 5,000 ft health limit. ` + (scores[key].why || "");
+  }
+  // plus a flat, visible penalty so the health issue can't be averaged away by strong scores elsewhere
+  scores.elevation = { score: -10, why: `Flat penalty: ${elev.toLocaleString()} ft is above the family's ${MAX_ELEVATION_FT.toLocaleString()} ft health limit. Sleeping this high for a week is a problem for members of the group.` };
 }
 
 function slugify(s: string) {
