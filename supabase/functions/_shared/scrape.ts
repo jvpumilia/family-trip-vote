@@ -31,7 +31,7 @@ export function canonicalUrl(url: string): string {
   try {
     const u = new URL(url);
     const h = u.hostname.toLowerCase();
-    if (h.includes("vrbo") || h.includes("homeaway")) { const m = u.pathname.match(/\/(?:p)?(\d{5,})/); if (m) return `https://www.vrbo.com/${m[1]}`; }
+    if (h.includes("vrbo") || h.includes("homeaway")) { const m = u.pathname.match(/\/(p?\d{5,}(?:ha|vb)?)(?:[/?#]|$)/); if (m) return `https://www.vrbo.com/${m[1]}`; }
     if (h.includes("airbnb")) { const m = u.pathname.match(/\/rooms\/(\d+)/); if (m) return `https://www.airbnb.com/rooms/${m[1]}`; }
     u.hash = "";
     return u.toString();
@@ -131,7 +131,7 @@ export async function scrape(url: string): Promise<Scraped> {
     out.sleeps = num(/sleeps\s*(\d+)/i, blob);
     const parts = (ogTitle || decode(title)).replace(/\s*\|\s*Vrbo.*$/i, "").split(/\s+-\s+/);
     const cityFromTitle = parts.length > 1 ? parts[parts.length - 1].trim() : "";
-    if (cityFromTitle && /^[A-Za-z .']{3,30}$/.test(cityFromTitle) && !/browse photos|hot tub|pool|view|cabin|home|lodge/i.test(cityFromTitle)) out.city = cityFromTitle;
+    if (cityFromTitle && /^[A-Za-z .']{3,30}$/.test(cityFromTitle) && !/browse photos|hot tub|pool|view|cabin|home|lodge|vrbo|reviews|deals|photos/i.test(cityFromTitle)) out.city = cityFromTitle;
     const got = await readerBackup(url, out);
     out.note = got
       ? "VRBO numbers were read through a backup reader. Double-check bedrooms, bathrooms and the town before saving."

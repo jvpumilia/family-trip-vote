@@ -56,6 +56,7 @@
     <button class="tab" data-tab="lodging">Lodging</button>
     <button class="tab" data-tab="mine">My picks</button>
     <button class="tab" data-tab="vote">Vote</button>
+    <button class="tab" data-tab="recs">AI picks</button>
     <button class="tab" data-tab="results">Results</button>
     <button class="tab" data-tab="admin" id="admin-tab" hidden>Admin</button>
   </nav>
@@ -63,8 +64,33 @@
   <section class="panel" data-panel="map">
     <div class="panel-head">
       <h2>The map</h2>
-      <p class="muted">Bigger circle = higher score. Tap a destination to see how hard it is to get there from each home. Small pins are lodging people have added.</p>
+      <p class="muted">Bigger circle = higher score. <b>Click a destination circle</b> to see the travel difficulty from each of our five homes, with hours and route. Small pins are houses people have added; click one for its scorecard.</p>
     </div>
+    <details class="howto" id="howto">
+      <summary><b>How this site works, and how everything is scored</b> <span class="muted tiny">(tap to open or close)</span></summary>
+      <div class="two-col even howto-grid">
+        <div>
+          <div class="section-title" style="margin-top:0">How to use it</div>
+          <ol class="list">
+            <li><b>Look around.</b> The Map and Destinations tabs show every place under consideration, scored the same way, with travel difficulty from each home.</li>
+            <li><b>Add houses.</b> On My picks, paste a listing link (Airbnb, VRBO or a cabin company). The site reads the page, places it on the map, and scores it against our family's needs in about a minute. Add as many as you like; add the nightly price if the page doesn't show it.</li>
+            <li><b>Star two finalists.</b> Each household stars the two houses it is actually recommending. Only starred houses go on the ballot, so a destination with no starred house can't be voted on. You can also adopt one of the AI picks as your own.</li>
+            <li><b>Vote.</b> Rank the finalist houses from your favorite down. Ranked-choice, you can change it any time before <b>Sept 28</b>. We book the winner right after, because 7-bedroom houses for June go fast.</li>
+          </ol>
+          <p class="tiny muted">Houses show who added them only in a small "More" line at the bottom of the detail view, so people judge the house, not the person. Results stay hidden until Joseph opens them.</p>
+        </div>
+        <div>
+          <div class="section-title" style="margin-top:0">The bedroom rule (the gate)</div>
+          <p>We are five couples plus four kids (11, 8, 4 and 2). A house needs <b>five couple rooms</b> (a king, a queen, or two fulls) and <b>two kids' rooms</b> (bunk beds welcome; kids sharing one bed need at least a queen). That's seven real, enclosed bedrooms. Lofts and sofa beds count for nothing.</p>
+          <div class="section-title">Destination score, out of 100</div>
+          <table class="rubric"><tr><td>Lodging depth (gate: under 10 = out)</td><td>25</td></tr><tr><td>Travel burden (longest leg 10, other four homes 10)</td><td>20</td></tr><tr><td>Kid activities, ages 2 to 11, incl. rainy days</td><td>15</td></tr><tr><td>Nature / national park access</td><td>15</td></tr><tr><td>On-site kid amenities</td><td>10</td></tr><tr><td>June cost, heat, crowds, weather</td><td>10</td></tr><tr><td>Overflow lodging within 10 min</td><td>5</td></tr></table>
+          <div class="section-title">House score, out of 100</div>
+          <table class="rubric"><tr><td>Sleeping plan (5 couple rooms + 2 kids' rooms)</td><td>25</td></tr><tr><td>Value for June</td><td>15</td></tr><tr><td>Kid amenities: pool, hot tub, game room, theater</td><td>15</td></tr><tr><td>Bathrooms (6+ is the target)</td><td>10</td></tr><tr><td>Kitchen &amp; gathering: 2 fridges, 2 dishwashers, table for 14</td><td>10</td></tr><tr><td>Location: minutes to the fun and the airport</td><td>10</td></tr><tr><td>Reviews</td><td>10</td></tr><tr><td>Parking for 3+ cars, toddler safety</td><td>5</td></tr></table>
+          <div class="section-title">Travel difficulty, 1 to 10</div>
+          <p class="tiny">Per household, door to door. <i class="pill d1">1–3</i> under 4 hours or one short nonstop · <i class="pill d5">4–5</i> one nonstop plus a drive · <i class="pill d7">6–7</i> a long drive or a connection · <i class="pill d9">8–10</i> a connection plus a long drive, 10+ hours.</p>
+        </div>
+      </div>
+    </details>
     <div id="map"></div>
     <div id="map-info" class="map-info"></div>
     <div class="legend">
@@ -179,6 +205,14 @@
       <p class="muted" id="vote-intro">Rank the finalist houses from your favorite down. You're voting for a specific house so we can book it the day the vote closes.</p>
     </div>
     <div id="vote-area"></div>
+  </section>
+
+  <section class="panel" data-panel="recs" hidden>
+    <div class="panel-head">
+      <h2>AI picks</h2>
+      <p class="muted">Claude researched real listings in every destination and scored them with the same rubric everyone else's houses get. These are its recommendations for our group. They are not on the ballot unless a household adopts one as its own pick. Availability for our June week still has to be confirmed with each host.</p>
+    </div>
+    <div id="recs-area"></div>
   </section>
 
   <section class="panel" data-panel="results" hidden>

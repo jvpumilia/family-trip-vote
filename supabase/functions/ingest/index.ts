@@ -70,7 +70,9 @@ Deno.serve(async (req) => {
           const x = await extractListing(s.url, s.text);
           if (x) {
             s.title = s.title && s.source === "airbnb" ? s.title : (x.title || s.title);
-            s.city = s.city || x.city; s.state = s.state || stateAbbr(x.state); s.bedrooms = s.bedrooms ?? x.bedrooms;
+            // the AI read of the page text beats a title-based guess for everything but Airbnb (whose tags are exact)
+            s.city = s.source === "airbnb" ? (s.city || x.city) : (x.city || s.city);
+            s.state = s.state || stateAbbr(x.state); s.bedrooms = s.bedrooms ?? x.bedrooms;
             s.bathrooms = s.bathrooms ?? x.bathrooms; s.sleeps = s.sleeps ?? x.sleeps;
             (s as unknown as Record<string, unknown>).price_night = x.price_night; (s as unknown as Record<string, unknown>).price_total = x.price_total;
             if (!s.description || s.description.length < 300) s.description = [x.summary, x.amenities?.length ? "Amenities: " + x.amenities.join(", ") : ""].filter(Boolean).join("\n\n");
@@ -94,7 +96,9 @@ Deno.serve(async (req) => {
       const { dest, created, geo } = await resolveDestination(admin, city, state, user.id);
       // jitter property pins slightly so several in one town don't stack
       const jit = () => (Math.random() - 0.5) * 0.06;
+      const asAi = !!body.as_ai && !!profile?.is_admin;
       const row = {
+        ai_pick: asAi, ai_note: asAi ? (body.ai_note || null) : null,
         destination_id: dest.id, url, source: url ? detectSource(url) : "other", title, city, state,
         lat: geo.lat + jit(), lng: geo.lng + jit(),
         bedrooms: body.bedrooms ? parseInt(body.bedrooms) : null,
@@ -105,7 +109,7 @@ Deno.serve(async (req) => {
         image_url: body.image_url || null, description: body.description || null,
         rating: body.rating ? parseFloat(body.rating) : null,
         review_count: body.review_count ? parseInt(body.review_count) : null,
-        notes: body.notes || null, submitted_by: user.id, status: "pending",
+        notes: body.notes || null, submitted_by: asAi ? null : user.id, status: "pending",
       };
       const { data: prop, error } = await admin.from("properties").insert(row).select("*").single();
       if (error) return err("Could not save the lodging: " + error.message, 500);
@@ -117,6 +121,7 @@ Deno.serve(async (req) => {
       const { data: prop } = await admin.from("properties").select("*").eq("id", body.property_id).maybeSingle();
       if (!prop) return err("Lodging not found", 404);
       if (prop.submitted_by !== user.id && !profile?.is_admin) return err("Only the person who added it can re-score it.", 403);
+      if (body.ai_note !== undefined && profile?.is_admin) await admin.from("properties").update({ ai_note: body.ai_note }).eq("id", prop.id);
       const { data: dest } = await admin.from("destinations").select("*").eq("id", prop.destination_id).single();
       const system = `You are the family's lodging analyst. Score one rental house for a 14-person family reunion using the rubric exactly. Base every score on the listing facts given; when a fact is missing, say so in the why text, score conservatively, and add it to the verify checklist. Never invent amenities.\n${FAMILY_CONTEXT}\n${PROP_RUBRIC}`;
       const facts = {
@@ -140,6 +145,18 @@ Deno.serve(async (req) => {
       const { data: saved, error } = await admin.from("properties").update(upd).eq("id", prop.id).select("*").single();
       if (error) return err("Could not save the score: " + error.message, 500);
       return json({ property: saved });
+    }
+
+    // 3b) Adopt a system recommendation as one of my household's houses (a copy under my name)
+    if (action === "adopt") {
+      const { data: src } = await admin.from("properties").select("*").eq("id", body.property_id).maybeSingle();
+      if (!src || !src.ai_pick) return err("Only recommendations can be adopted.", 400);
+      const { data: dup } = await admin.from("properties").select("id").eq("adopted_from", src.id).eq("submitted_by", user.id).maybeSingle();
+      if (dup) return json({ property_id: dup.id, already: true });
+      const { id: _id, created_at: _c, updated_at: _u, ai_pick: _a, ai_note: _n, is_finalist: _f, ...rest } = src;
+      const { data: prop, error } = await admin.from("properties").insert({ ...rest, submitted_by: user.id, adopted_from: src.id, ai_pick: false, is_finalist: false, notes: src.notes }).select("*").single();
+      if (error) return err(error.message, 500);
+      return json({ property_id: prop.id });
     }
 
     // 4) Nominate a destination with no lodging yet (it shows on the map but stays off the ballot)

@@ -35,6 +35,12 @@
   const householdOf = (uid) => S.profiles.find((p) => p.id === uid)?.household || "";
   const nameOf = (uid) => S.profiles.find((p) => p.id === uid)?.display_name || "";
   const destOf = (p) => S.dests.find((d) => d.id === p.destination_id);
+  const normUrl = (u) => (u || "").toLowerCase().replace(/^https?:\/\/(www\.)?/, "").replace(/[?#].*$/, "").replace(/\/$/, "");
+  const aiPicks = () => S.props.filter((p) => p.ai_pick);
+  /** the AI pick a family house matches (same listing), or null */
+  const aiMatchFor = (p) => p.ai_pick ? null : aiPicks().find((a) => a.id === p.adopted_from || (a.url && p.url && normUrl(a.url) === normUrl(p.url))) || null;
+  /** family houses that match an AI pick */
+  const familyMatchesFor = (a) => S.props.filter((p) => !p.ai_pick && (p.adopted_from === a.id || (a.url && p.url && normUrl(a.url) === normUrl(p.url))));
   const votingOpen = () => { const v = S.settings.voting || {}; if (v.open === false) return false; if (v.closes && Date.now() > new Date(v.closes).getTime()) return false; return true; };
   const isAdmin = () => !!S.profile?.is_admin;
 
@@ -127,7 +133,7 @@
   }
 
   function renderAll() {
-    renderMap(); renderDests(); renderLodging(); renderMine(); renderVote(); renderResults(); if (isAdmin()) renderAdmin();
+    renderMap(); renderDests(); renderLodging(); renderMine(); renderVote(); renderRecs(); renderResults(); if (isAdmin()) renderAdmin();
   }
 
   // ---------- tabs ----------
@@ -239,6 +245,7 @@
         <p>${esc(d.summary || "")}</p>
         ${scoreBars(d.scores, DEST_CRITERIA, false)}
         <div class="travel-row">Travel: ${S.origins.map((o) => { const t = d.travel?.[o.key]; return `<span title="${esc(o.label)}: ${t ? t.hours + " h, " + t.route : "?"}">${esc(o.label.split(",")[0])} ${t ? diffPill(t.difficulty) : ""}</span>`; }).join("")}</div>
+        <details class="travel-detail"><summary>Travel difficulty by household: hours and route</summary>${travelTable(d)}</details>
         ${ballotLine(d)}
         <div class="actions"><button class="btn small" data-open-dest="${d.id}">Scorecard, travel &amp; things to do</button><button class="btn small ghost" data-goto-lodging="${d.id}">See lodging</button></div>
       </div></div>`).join("");
@@ -264,7 +271,7 @@
     const pending = p.status !== "scored";
     return `<div class="card prop-card" data-open-prop="${p.id}">
       <div class="thumb" style="${p.image_url ? `background-image:url('${esc(p.image_url)}')` : ""}"></div>
-      ${p.is_finalist ? `<span class="star">★ Finalist</span>` : ""}
+      ${p.is_finalist ? `<span class="star">★ Finalist</span>` : p.ai_pick ? `<span class="star" style="background:#5b3fa8;color:#fff">AI pick</span>` : aiMatchFor(p) ? `<span class="star" style="background:#1f7a8c;color:#fff">Matches an AI pick</span>` : ""}
       ${pending ? `<i class="pill neutral badge">scoring…</i>` : (p.gate_pass ? `<i class="pill ok badge">Sleeps us right ✓</i>` : `<i class="pill warn badge">Bed plan short ✗</i>`)}
       <div class="body">
         <div class="title">${esc(p.title)}</div>
@@ -288,7 +295,7 @@
 
   function propModal(p) {
     const d = destOf(p);
-    const mine = p.submitted_by === S.session.user.id || (householdOf(p.submitted_by) && householdOf(p.submitted_by) === S.profile.household);
+    const mine = !p.ai_pick && (p.submitted_by === S.session.user.id || (householdOf(p.submitted_by) && householdOf(p.submitted_by) === S.profile.household));
     const det = p.details || {};
     const flags = [det.indoor_pool && "Indoor pool", det.outdoor_pool && "Outdoor pool", det.hot_tub && "Hot tub", det.game_room && "Game room", det.theater && "Theater"].filter(Boolean);
     openModal(`${p.image_url ? `<img class="hero" src="${esc(p.image_url)}" alt="">` : ""}
@@ -313,9 +320,11 @@
         ${(p.red_flags || []).length ? `<div class="section-title">Red flags</div><ul class="list">${p.red_flags.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
         ${(p.verify_checklist || []).length ? `<div class="section-title">Confirm in writing before any deposit</div><ul class="list">${p.verify_checklist.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
       ` : `<p class="msg info">Still being scored. This usually takes under a minute; the page updates by itself.</p>`}
+      ${p.ai_pick ? `<div class="section-title">Why Claude recommends it <i class="pill ai">AI pick</i></div><p>${esc(p.ai_note || "")}</p>${familyMatchesFor(p).length ? `<p class="msg ok">Also picked by ${familyMatchesFor(p).map((m) => esc(householdOf(m.submitted_by))).filter((v, i, a) => a.indexOf(v) === i).join(", ")}.</p>` : ""}<div class="actions"><button class="btn primary small" data-adopt="${p.id}">Adopt as one of my household's houses</button></div>` : ""}
+      ${!p.ai_pick && aiMatchFor(p) ? `<p class="msg ok"><i class="pill match">Matches an AI pick</i> Claude independently recommended this same house. <a href="#" data-open-prop="${aiMatchFor(p).id}">See its note</a>.</p>` : ""}
       ${p.notes ? `<div class="section-title">Notes from whoever added it</div><p>${esc(p.notes)}</p>` : ""}
       ${p.description ? `<details class="quiet"><summary>Listing description</summary><p>${esc(p.description)}</p></details>` : ""}
-      <details class="quiet"><summary>More</summary>Added ${fmtDate(p.created_at)}${p.submitted_by ? ` by ${esc(nameOf(p.submitted_by))} (${esc(householdOf(p.submitted_by))})` : " from the decision packet"}.</details>
+      <details class="quiet"><summary>More</summary>Added ${fmtDate(p.created_at)}${p.submitted_by ? ` by ${esc(nameOf(p.submitted_by))} (${esc(householdOf(p.submitted_by))})` : p.ai_pick ? " by Claude (AI research)" : " from the decision packet"}.</details>
       ${mine || isAdmin() ? `<div class="actions">
         <button class="btn small" data-rescore-prop="${p.id}">Re-run scoring</button>
         <button class="btn small" data-edit-prop="${p.id}">Edit details</button>
@@ -426,12 +435,17 @@
 
     // global click delegation
     document.addEventListener("click", async (e) => {
-      const t = e.target.closest("[data-open-dest],[data-open-prop],[data-goto-lodging],[data-star],[data-rescore-prop],[data-edit-prop],[data-del-prop],[data-rescore-dest],[data-del-dest]");
+      const t = e.target.closest("[data-open-dest],[data-open-prop],[data-goto-lodging],[data-star],[data-rescore-prop],[data-edit-prop],[data-del-prop],[data-rescore-dest],[data-del-dest],[data-adopt]");
       if (!t) return;
       if (t.dataset.openDest) { e.preventDefault(); const d = S.dests.find((x) => x.id === t.dataset.openDest); if (d) destModal(d); }
       else if (t.dataset.openProp) { e.preventDefault(); const p = S.props.find((x) => x.id === t.dataset.openProp); if (p) propModal(p); }
       else if (t.dataset.gotoLodging) { S.filter = t.dataset.gotoLodging; renderLodging(); showTab("lodging"); }
       else if (t.dataset.star) { toggleFinalist(t.dataset.star); }
+      else if (t.dataset.adopt) {
+        t.disabled = true; t.textContent = "Adopting…";
+        try { const r = await callFn("ingest", { action: "adopt", property_id: t.dataset.adopt }); await loadAll(); renderAll(); closeModal(); toast(r.already ? "You already adopted this one. It's in My picks." : "Adopted. It's now in My picks under your household; star it to put it on the ballot."); showTab("mine"); }
+        catch (err) { toast(err.message, 6000); t.disabled = false; t.textContent = "Adopt as one of my household's houses"; }
+      }
       else if (t.dataset.rescoreProp) {
         t.disabled = true; t.textContent = "Scoring…";
         try { await callFn("ingest", { action: "score", property_id: t.dataset.rescoreProp }); toast("Re-scored."); await loadAll(); renderAll(); const p = S.props.find((x) => x.id === t.dataset.rescoreProp); if (p) propModal(p); }
@@ -504,6 +518,42 @@
     };
   }
 
+  // ---------- AI recommendations ----------
+  function recCard(p, rank) {
+    const d = destOf(p); const det = p.details || {};
+    const matches = familyMatchesFor(p);
+    return `<div class="card rec-card">
+      <div class="thumb" style="${p.image_url ? `background-image:url('${esc(p.image_url)}')` : ""}"></div>
+      <div>
+        <div class="title-row"><h3>${rank ? `#${rank} ` : ""}<a href="#" data-open-prop="${p.id}">${esc(p.title)}</a></h3><span class="mini-score">${p.status === "scored" ? p.total : "…"}<small>/100</small></span></div>
+        <div class="muted tiny">${esc(d?.name || "")} · ${p.bedrooms ?? "?"} BR · ${p.bathrooms ?? "?"} BA · sleeps ${p.sleeps ?? "?"}${p.price_night ? " · " + money(p.price_night) + "/night" : ""}${p.rating ? ` · ★ ${p.rating}${p.review_count ? ` (${p.review_count})` : ""}` : ""}
+          ${p.gate_pass ? '<i class="pill ok">sleeps us right ✓</i>' : '<i class="pill warn">bed plan short ✗</i>'}
+          ${matches.length ? `<i class="pill match">Also picked by ${matches.map((m) => esc(householdOf(m.submitted_by))).filter((v, i, a) => a.indexOf(v) === i).join(", ")}</i>` : ""}</div>
+        <p>${esc(p.ai_note || p.ai_summary || "")}</p>
+        ${det.bed_plan ? `<p class="tiny"><b>Beds:</b> ${esc(det.bed_plan)}</p>` : ""}
+        ${(p.red_flags || []).length ? `<p class="tiny"><b>Watch:</b> ${p.red_flags.slice(0, 3).map(esc).join(" · ")}</p>` : ""}
+        <div class="actions"><button class="btn small" data-open-prop="${p.id}">Full scorecard</button>${p.url ? `<a class="btn small" href="${esc(p.url)}" target="_blank" rel="noopener">Open listing ↗</a>` : ""}<button class="btn small primary" data-adopt="${p.id}">Adopt as my pick</button></div>
+      </div></div>`;
+  }
+  function renderRecs() {
+    const area = $("#recs-area");
+    const picks = aiPicks().filter((p) => p.status === "scored").sort((a, b) => b.total - a.total);
+    const recs = S.settings.ai_recs || {};
+    if (!picks.length) { area.innerHTML = `<p class="empty">Research is still running. Check back shortly.</p>`; return; }
+    const top = (recs.top || []).map((t) => ({ ...t, p: picks.find((x) => x.id === t.property_id) })).filter((t) => t.p);
+    let html = recs.intro ? `<div class="card" style="margin-bottom:14px">${recs.intro.split(/\n\n+/).map((para) => `<p>${esc(para)}</p>`).join("")}${recs.updated_at ? `<p class="tiny muted">Research date: ${fmtDate(recs.updated_at)}. Prices are what the listing pages showed and will move with dates.</p>` : ""}</div>` : "";
+    if (top.length) {
+      html += `<h3>If Claude had to pick</h3><div class="cards">` + top.map((t, i) => `<div class="card"><div class="title-row"><b>#${i + 1} <a href="#" data-open-prop="${t.p.id}">${esc(t.p.title)}</a></b><span class="muted tiny">${esc(destOf(t.p)?.name || "")} · ${t.p.total}/100</span></div><p>${esc(t.why)}</p></div>`).join("") + `</div>`;
+    }
+    html += `<h3 style="margin-top:1.2em">Best house found in each destination</h3>`;
+    S.dests.forEach((d) => {
+      const ps = picks.filter((p) => p.destination_id === d.id);
+      html += `<div class="section-title">${esc(d.name)} <span class="muted" style="font-weight:400">· destination ${d.total}/100</span></div>`;
+      html += ps.length ? `<div class="cards">${ps.map((p) => recCard(p)).join("")}</div>` : `<p class="empty">No house met the bar here. ${esc(d.cons?.[0] || "")}</p>`;
+    });
+    area.innerHTML = html;
+  }
+
   // ---------- results ----------
   function tally() {
     const fin = finalists();
@@ -527,6 +577,26 @@
     }
     return { fin, ballots, borda, first, rounds, winner };
   }
+  /** points each household gave each house, plus every person's ranking */
+  function householdTally(rows, ballots) {
+    const n = rows.length;
+    const hhs = CFG.HOUSEHOLDS.filter((h) => S.profiles.some((p) => p.household === h));
+    const pts = {}; // house -> household -> points
+    const voterRows = [];
+    S.votes.forEach((v) => {
+      const hh = householdOf(v.user_id); if (!hh) return;
+      const r = (v.ranking || []).filter((id) => rows.some((p) => p.id === id));
+      r.forEach((id, i) => { pts[id] = pts[id] || {}; pts[id][hh] = (pts[id][hh] || 0) + (n - i); });
+      voterRows.push({ hh, name: nameOf(v.user_id), r });
+    });
+    const hhVoted = (h) => S.votes.filter((v) => householdOf(v.user_id) === h).length;
+    const hhSize = (h) => S.profiles.filter((p) => p.household === h).length;
+    return `<div class="section-title">By household (points given)</div>
+      <div class="table-wrap"><table class="results-table hh-table"><tr><th>House</th>${hhs.map((h) => `<th>${esc(h.split(",")[0])}<br><span class="tiny muted" style="font-weight:400">${hhVoted(h)}/${hhSize(h)} voted</span></th>`).join("")}</tr>
+      ${rows.map((p) => `<tr><td>${esc(p.title)}</td>${hhs.map((h) => `<td class="pts">${pts[p.id]?.[h] ?? "·"}</td>`).join("")}</tr>`).join("")}</table></div>
+      <div class="section-title">How each person ranked them</div>
+      <div class="table-wrap"><table class="results-table">${hhs.map((h) => voterRows.filter((v) => v.hh === h).map((v) => `<tr><td><b>${esc(v.name)}</b><br><span class="tiny muted">${esc(h)}</span></td><td>${v.r.length ? v.r.map((id, i) => `${i + 1}. ${esc(rows.find((p) => p.id === id)?.title || "?")}`).join("<br>") : "<span class='muted'>no ballot</span>"}</td></tr>`).join("")).join("")}</table></div>`;
+  }
   function renderResults() {
     const area = $("#results-area");
     const pub = !!S.settings.voting?.results_public;
@@ -542,7 +612,8 @@
       `<div class="table-wrap"><table class="results-table"><tr><th>House</th><th>Destination</th><th>1st choices</th><th>Points</th><th>Final round</th></tr>` +
       rows.map((p) => `<tr class="${p.id === winner ? "winner" : ""}"><td>${p.id === winner ? "🏆 " : ""}<a href="#" data-open-prop="${p.id}">${esc(p.title)}</a></td><td>${esc(destOf(p)?.name || "")}</td><td>${first[p.id]}</td><td>${borda[p.id]}</td><td>${rounds[rounds.length - 1][p.id] ?? "—"}</td></tr>`).join("") + `</table></div>
       <p class="tiny muted">Points: with ${fin.length} houses on the ballot, a 1st-place rank is worth ${fin.length}, 2nd is ${fin.length - 1}, and so on. "Final round" is the instant-runoff count after the weakest houses were eliminated (${rounds.length} round${rounds.length > 1 ? "s" : ""}).</p>
-      <div class="section-title">By destination (points)</div><div class="table-wrap"><table class="results-table">${Object.entries(byDest).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v}</td></tr>`).join("")}</table></div>`;
+      <div class="section-title">By destination (points)</div><div class="table-wrap"><table class="results-table">${Object.entries(byDest).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v}</td></tr>`).join("")}</table></div>
+      ${householdTally(rows, ballots)}`;
   }
 
   // ---------- admin ----------
@@ -579,6 +650,9 @@
       catch (err) { toast(err.message, 6000); }
     });
   }
+
+  // remember whether the how-it-works panel is open
+  (() => { const h = $("#howto"); if (!h) return; try { h.open = localStorage.getItem("ftv_howto") !== "closed"; } catch { h.open = true; } h.addEventListener("toggle", () => { try { localStorage.setItem("ftv_howto", h.open ? "open" : "closed"); } catch { /* ignore */ } }); })();
 
   // kick off
   sb.auth.getSession().then(({ data: { session } }) => { S.session = session; if (session) boot(); else showAuth(); });
