@@ -16,3 +16,6 @@ star two finalists per household, and rank the ballot. Live at https://jvpumilia
 - Change the family code: `supabase secrets set INVITE_CODE=...`
 - Passwords can't be emailed (no mail server); admins reset them from the Admin tab.
 - Publish site changes: commit and push `docs/` to `main`.
+
+## Releasing site changes
+Run `./scripts/bump.sh` before committing so `docs/index.html` points at freshly versioned `app.js` / `style.css` (GitHub Pages caches unversioned files for ~10 minutes).
