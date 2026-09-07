@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Family Trip 2027 · Where are we going?</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗺️</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <div class="brand-title">Family Trip · June 2027</div>
+    <div class="brand-sub">14 of us · kids 11, 8, 4 &amp; 2 · book by <b>Sept 30</b></div>
+  </div>
+  <div class="userchip" id="userchip" hidden>
+    <span id="user-name"></span>
+    <button class="link" id="signout">Sign out</button>
+  </div>
+</header>
+
+<section id="auth" class="auth" hidden>
+  <div class="auth-card">
+    <h1>Where are we going?</h1>
+    <p class="muted">Everyone's lodging ideas, scored the same way, on one map. Add your finds, star your two picks, then rank the ballot.</p>
+    <div class="tabs small">
+      <button class="tab active" data-authtab="signin">Sign in</button>
+      <button class="tab" data-authtab="signup">Create account</button>
+    </div>
+    <form id="signin-form" class="stack">
+      <label>Email <input type="email" name="email" required autocomplete="email"></label>
+      <label>Password <input type="password" name="password" required autocomplete="current-password"></label>
+      <button class="btn primary" type="submit">Sign in</button>
+      <p class="muted tiny">Forgot your password? Ask Joseph to reset it.</p>
+    </form>
+    <form id="signup-form" class="stack" hidden>
+      <label>Your name <input name="name" required placeholder="e.g. Aunt Mary"></label>
+      <label>Which family group? <select name="household" required></select></label>
+      <label>Email <input type="email" name="email" required autocomplete="email"></label>
+      <label>Password (8+ characters) <input type="password" name="password" required minlength="8" autocomplete="new-password"></label>
+      <label>Family code <input name="invite" required placeholder="Joseph sent this in the group text"></label>
+      <button class="btn primary" type="submit">Create account</button>
+    </form>
+    <p id="auth-msg" class="msg" hidden></p>
+  </div>
+</section>
+
+<main id="app" hidden>
+  <nav class="tabs main-tabs" id="main-tabs">
+    <button class="tab active" data-tab="map">Map</button>
+    <button class="tab" data-tab="destinations">Destinations</button>
+    <button class="tab" data-tab="lodging">Lodging</button>
+    <button class="tab" data-tab="mine">My picks</button>
+    <button class="tab" data-tab="vote">Vote</button>
+    <button class="tab" data-tab="results">Results</button>
+    <button class="tab" data-tab="admin" id="admin-tab" hidden>Admin</button>
+  </nav>
+
+  <section class="panel" data-panel="map">
+    <div class="panel-head">
+      <h2>The map</h2>
+      <p class="muted">Bigger circle = higher score. Tap a destination to see how hard it is to get there from each home. Small pins are lodging people have added.</p>
+    </div>
+    <div id="map"></div>
+    <div id="map-info" class="map-info"></div>
+    <div class="legend">
+      <span><i class="dot dest"></i> Destination (score inside)</span>
+      <span><i class="dot prop"></i> Lodging</span>
+      <span><i class="dot home"></i> Where we're coming from</span>
+      <span class="diffkey">Travel: <i class="pill d1">easy</i> <i class="pill d5">medium</i> <i class="pill d8">hard</i></span>
+    </div>
+  </section>
+
+  <section class="panel" data-panel="destinations" hidden>
+    <div class="panel-head">
+      <h2>Destinations, ranked</h2>
+      <p class="muted">Every place is scored out of 100 on the same seven things from the decision packet. Lodging is a gate: under 10 there and it's out no matter what.</p>
+    </div>
+    <div id="dest-list" class="cards"></div>
+  </section>
+
+  <section class="panel" data-panel="lodging" hidden>
+    <div class="panel-head">
+      <h2>All lodging</h2>
+      <p class="muted">Every house anyone has added, scored out of 100. ★ marks a household's finalist. The 7-real-bedroom rule is the gate.</p>
+      <div class="filters">
+        <select id="lodging-filter"><option value="">All destinations</option></select>
+        <select id="lodging-sort">
+          <option value="total">Sort: score</option>
+          <option value="price">Sort: price</option>
+          <option value="bedrooms">Sort: bedrooms</option>
+          <option value="newest">Sort: newest</option>
+        </select>
+      </div>
+    </div>
+    <div id="lodging-list" class="cards grid"></div>
+  </section>
+
+  <section class="panel" data-panel="mine" hidden>
+    <div class="panel-head">
+      <h2>My picks</h2>
+      <p class="muted">Add as many houses as you like. When you're ready, star the <b>two</b> your household is recommending. Only starred houses go on the ballot.</p>
+    </div>
+    <div class="two-col">
+      <div class="card add-card">
+        <h3>Add a house</h3>
+        <form id="preview-form" class="stack">
+          <label>Paste the listing link (Airbnb, VRBO, a cabin company…)
+            <input name="url" type="url" placeholder="https://www.airbnb.com/rooms/…"></label>
+          <div class="row">
+            <button class="btn primary" type="submit" id="preview-btn">Read the listing</button>
+            <button class="btn" type="button" id="manual-btn">Enter by hand</button>
+          </div>
+        </form>
+        <form id="submit-form" class="stack" hidden>
+          <p id="prefill-note" class="msg info" hidden></p>
+          <input type="hidden" name="url"><input type="hidden" name="image_url"><input type="hidden" name="description"><input type="hidden" name="rating"><input type="hidden" name="review_count">
+          <label>Name of the house <input name="title" required></label>
+          <div class="row">
+            <label>City / town <input name="city" required placeholder="Pigeon Forge"></label>
+            <label>State <input name="state" required placeholder="TN" maxlength="20"></label>
+          </div>
+          <div class="row three">
+            <label>Real bedrooms <input name="bedrooms" type="number" min="1" max="30" required></label>
+            <label>Bathrooms <input name="bathrooms" type="number" min="1" max="30" step="0.5"></label>
+            <label>Sleeps <input name="sleeps" type="number" min="1" max="60"></label>
+          </div>
+          <div class="row">
+            <label>Price per night ($) <input name="price_night" type="number" min="0" step="1"></label>
+            <label>Total for the week ($) <input name="price_total" type="number" min="0" step="1"></label>
+          </div>
+          <label>Notes for the scorer <textarea name="notes" rows="3" placeholder="Anything the listing says that matters: 2 dishwashers, indoor pool, steep driveway, loft counted as a bedroom…"></textarea></label>
+          <div class="row">
+            <button class="btn primary" type="submit" id="submit-btn">Save &amp; score it</button>
+            <button class="btn" type="button" id="cancel-submit">Cancel</button>
+          </div>
+          <div id="submit-progress" class="progress" hidden></div>
+        </form>
+        <details class="nominate">
+          <summary>Just want to suggest a place, no house yet?</summary>
+          <form id="nominate-form" class="stack">
+            <p class="muted tiny">It gets scored and shows on the map, but it can't be voted on until someone adds a house there.</p>
+            <div class="row">
+              <label>City / town <input name="city" required></label>
+              <label>State <input name="state" required maxlength="20"></label>
+            </div>
+            <button class="btn" type="submit">Score this destination</button>
+          </form>
+        </details>
+      </div>
+      <div>
+        <div class="finalist-meter" id="finalist-meter"></div>
+        <div id="mine-list" class="cards"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" data-panel="vote" hidden>
+    <div class="panel-head">
+      <h2>Vote</h2>
+      <p class="muted" id="vote-intro">Rank the finalist houses from your favorite down. You're voting for a specific house so we can book it the day the vote closes.</p>
+    </div>
+    <div id="vote-area"></div>
+  </section>
+
+  <section class="panel" data-panel="results" hidden>
+    <div class="panel-head">
+      <h2>Results</h2>
+      <p class="muted">Ranked-choice: first choices are counted, the last-place house is dropped and its votes move to the next choice, until one house has a majority. Points are shown too so you can see the shape of it.</p>
+    </div>
+    <div id="results-area"></div>
+  </section>
+
+  <section class="panel" data-panel="admin" hidden>
+    <div class="panel-head"><h2>Admin</h2></div>
+    <div id="admin-area"></div>
+  </section>
+</main>
+
+<div id="modal" class="modal" hidden>
+  <div class="modal-card">
+    <button class="close" id="modal-close" aria-label="Close">×</button>
+    <div id="modal-body"></div>
+  </div>
+</div>
+<div id="toast" class="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
