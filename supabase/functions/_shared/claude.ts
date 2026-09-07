@@ -84,12 +84,12 @@ export async function askJson<T>(system: string, user: string, schema: Record<st
 
 const scoreObj = (max: number) => ({
   type: "object", additionalProperties: false, required: ["score", "why"],
-  properties: { score: { type: "integer", minimum: 0, maximum: max }, why: { type: "string" } },
+  properties: { score: { type: "integer", description: `0 to ${max}` }, why: { type: "string" } },
 });
 const travelObj = {
   type: "object", additionalProperties: false, required: ["difficulty", "hours", "route", "nonstop", "notes"],
   properties: {
-    difficulty: { type: "integer", minimum: 1, maximum: 10 },
+    difficulty: { type: "integer", description: "1 (easiest) to 10 (hardest)" },
     hours: { type: "number" },
     route: { type: "string" },
     nonstop: { type: "boolean" },
@@ -118,13 +118,13 @@ export const DEST_SCHEMA = {
       properties: { florida: travelObj, gigharbor: travelObj, nashville: travelObj, rockford: travelObj, janesville: travelObj },
     },
     attractions: {
-      type: "array", minItems: 5, maxItems: 12,
+      type: "array", description: "6 to 10 items",
       items: {
         type: "object", additionalProperties: false, required: ["name", "category", "rating", "ages", "why"],
         properties: {
           name: { type: "string" },
           category: { type: "string", enum: ["theme park", "national park", "outdoors", "water", "animals", "museum", "rainy day", "food", "scenic", "other"] },
-          rating: { type: "integer", minimum: 1, maximum: 5, description: "Fit for THIS family, 5 = must-do" },
+          rating: { type: "integer", description: "1 to 5, fit for THIS family, 5 = must-do" },
           ages: { type: "string", description: "e.g. 'all ages', '5+', 'toddler-friendly'" },
           why: { type: "string" },
         },
@@ -159,6 +159,15 @@ export const PROP_SCHEMA = {
   },
 };
 
+const DEST_MAX: Record<string, number> = { lodging: 25, amenities: 10, travel: 20, kids: 15, nature: 15, overflow: 5, june: 10 };
+const PROP_MAX: Record<string, number> = { bedrooms: 25, bathrooms: 10, kid_amenities: 15, kitchen_gathering: 10, location: 10, value: 15, reviews: 10, logistics: 5 };
+/** Clamp every score into its rubric range, then add them up. */
 export function sumScores(scores: Record<string, { score: number }>): number {
-  return Object.values(scores || {}).reduce((a, s) => a + (Number(s?.score) || 0), 0);
+  let total = 0;
+  for (const [k, s] of Object.entries(scores || {})) {
+    const max = DEST_MAX[k] ?? PROP_MAX[k] ?? 100;
+    const v = Math.max(0, Math.min(max, Math.round(Number(s?.score) || 0)));
+    s.score = v; total += v;
+  }
+  return total;
 }

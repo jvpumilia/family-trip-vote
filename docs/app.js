@@ -148,7 +148,7 @@
   function ensureMap() {
     if (S.map) return;
     S.map = L.map("map", { scrollWheelZoom: false }).setView([38.5, -96.5], 4);
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", { attribution: "&copy; OpenStreetMap &copy; CARTO", maxZoom: 18 }).addTo(S.map);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "&copy; OpenStreetMap contributors", maxZoom: 18 }).addTo(S.map);
     S.layers.origins = L.layerGroup().addTo(S.map);
     S.layers.dests = L.layerGroup().addTo(S.map);
     S.layers.props = L.layerGroup().addTo(S.map);
