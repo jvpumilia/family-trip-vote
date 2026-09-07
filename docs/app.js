@@ -531,7 +531,8 @@
   function renderAdmin() {
     const v = S.settings.voting || {};
     const area = $("#admin-area");
-    const closesLocal = v.closes ? new Date(v.closes).toISOString().slice(0, 16) : "";
+    const toLocalInput = (iso) => { const d = new Date(iso); const pad = (n) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+    const closesLocal = v.closes ? toLocalInput(v.closes) : "";
     area.innerHTML = `<div class="admin-grid">
       <div class="card"><h3>Voting</h3><div class="stack">
         <label class="switch"><input type="checkbox" id="adm-open" ${v.open !== false ? "checked" : ""}> Voting is open</label>
