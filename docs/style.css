@@ -180,3 +180,6 @@ details.travel-detail summary{cursor:pointer;color:var(--sea)}
 .rec-card .thumb{height:100%;min-height:150px;border-radius:10px;background:#e8dfcf center/cover no-repeat}
 @media (max-width:640px){.rec-card{grid-template-columns:1fr}.rec-card .thumb{height:160px}}
 .hh-table td.pts{text-align:center;font-weight:600}
+
+.card.dq{opacity:.6;filter:grayscale(.4)}
+.card.dq .title,.card.dq h3{text-decoration:line-through;text-decoration-color:var(--d9)}

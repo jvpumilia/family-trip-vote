@@ -37,6 +37,14 @@
   const destOf = (p) => S.dests.find((d) => d.id === p.destination_id);
   const normUrl = (u) => (u || "").toLowerCase().replace(/^https?:\/\/(www\.)?/, "").replace(/[?#].*$/, "").replace(/\/$/, "");
   const aiPicks = () => S.props.filter((p) => p.ai_pick);
+  const isDq = (p) => p.avail_status === "unavailable";
+  const tripWeek = () => { const t = S.settings.trip || {}; return t.check_in && t.check_out ? `${fmtDate(t.check_in)} to ${fmtDate(t.check_out)}` : "our June 2027 week (dates not set yet)"; };
+  const availBadge = (p, small) => isDq(p) ? `<i class="pill warn">Not available: disqualified</i>` : p.avail_status === "available" ? `<i class="pill ok">Availability confirmed</i>` : (small ? "" : `<i class="pill neutral">Availability unchecked</i>`);
+  async function setAvailability(id, status, note) {
+    const { error } = await sb.rpc("set_availability", { p_id: id, p_status: status, p_note: note || null });
+    if (error) { toast(error.message, 6000); return false; }
+    await loadAll(); renderAll(); return true;
+  }
   /** the AI pick a family house matches (same listing), or null */
   const aiMatchFor = (p) => p.ai_pick ? null : aiPicks().find((a) => a.id === p.adopted_from || (a.url && p.url && normUrl(a.url) === normUrl(p.url))) || null;
   /** family houses that match an AI pick */
@@ -203,7 +211,7 @@
         <div class="s">${esc(d.region)} · ${fin ? `<i class="pill ok">on the ballot</i> ${fin} finalist${fin > 1 ? "s" : ""}` : n ? `${n} house${n > 1 ? "s" : ""} added, none starred` : "no house yet"}</div></div>
         <div class="sc">${d.total}<small>/100</small></div></div>`;
     }).join("") : `<p class="empty">Nothing yet.</p>`;
-    const top = S.props.filter((p) => p.status === "scored").sort((a, b) => b.total - a.total).slice(0, 5);
+    const top = S.props.filter((p) => p.status === "scored" && !isDq(p)).sort((a, b) => b.total - a.total).slice(0, 5);
     $("#landing-props").innerHTML = top.length ? top.map((p, i) => `<div class="rank-row"><div class="n">${i + 1}</div>
         <div><div class="t"><a href="#" data-open-prop="${p.id}">${esc(p.title)}</a>${p.ai_pick ? ' <i class="pill ai">AI Selected</i>' : ""}${p.is_finalist ? ' <i class="pill sun">★</i>' : ""}${p.gate_pass ? "" : ' <i class="pill warn">bed plan ✗</i>'}</div>
         <div class="s">${esc(destOf(p)?.name || p.city || "")} · ${p.bedrooms ?? "?"} BR · ${p.bathrooms ?? "?"} BA${p.price_night ? " · " + money(p.price_night) + "/night" : ""}</div></div>
@@ -277,13 +285,14 @@
   function propCard(p, mine) {
     const d = destOf(p);
     const pending = p.status !== "scored";
-    return `<div class="card prop-card" data-open-prop="${p.id}">
+    return `<div class="card prop-card ${isDq(p) ? "dq" : ""}" data-open-prop="${p.id}">
       <div class="thumb" style="${p.image_url ? `background-image:url('${esc(p.image_url)}')` : ""}"></div>
       ${p.is_finalist ? `<span class="star">★ Finalist</span>` : p.ai_pick ? `<span class="star" style="background:#5b3fa8;color:#fff">AI Selected</span>` : aiMatchFor(p) ? `<span class="star" style="background:#1f7a8c;color:#fff">Matches AI Selected</span>` : ""}
       ${pending ? `<i class="pill neutral badge">scoring…</i>` : (p.gate_pass ? `<i class="pill ok badge">Sleeps us right ✓</i>` : `<i class="pill warn badge">Bed plan short ✗</i>`)}
       <div class="body">
         <div class="title">${esc(p.title)}</div>
         <div class="meta">${esc(d?.name || p.city)} · ${p.bedrooms ?? "?"} BR · ${p.bathrooms ?? "?"} BA · sleeps ${p.sleeps ?? "?"}</div>
+        ${isDq(p) || p.avail_status === "available" ? `<div class="meta">${availBadge(p, true)}</div>` : ""}
         <div class="foot"><span class="meta">${p.price_night ? money(p.price_night) + "/night" : ""}${p.price_total ? " · " + money(p.price_total) + " week" : ""}</span>
         <span class="mini-score">${pending ? "…" : p.total}<small>/100</small></span></div>
       </div></div>`;
@@ -295,7 +304,7 @@
     sel.value = S.filter || cur || "";
     let list = S.props.filter((p) => !S.filter || p.destination_id === S.filter);
     const sort = $("#lodging-sort").value;
-    list = list.slice().sort((a, b) => sort === "price" ? (a.price_night || 1e9) - (b.price_night || 1e9) : sort === "bedrooms" ? (b.bedrooms || 0) - (a.bedrooms || 0) : sort === "newest" ? new Date(b.created_at) - new Date(a.created_at) : b.total - a.total);
+    list = list.slice().sort((a, b) => (isDq(a) - isDq(b)) || (sort === "price" ? (a.price_night || 1e9) - (b.price_night || 1e9) : sort === "bedrooms" ? (b.bedrooms || 0) - (a.bedrooms || 0) : sort === "newest" ? new Date(b.created_at) - new Date(a.created_at) : b.total - a.total));
     $("#lodging-list").innerHTML = list.length ? list.map((p) => propCard(p)).join("") : `<p class="empty">No houses yet. Be the first: paste a link on the My picks tab.</p>`;
   }
   $("#lodging-filter").onchange = (e) => { S.filter = e.target.value; renderLodging(); };
@@ -328,6 +337,12 @@
         ${(p.red_flags || []).length ? `<div class="section-title">Red flags</div><ul class="list">${p.red_flags.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
         ${(p.verify_checklist || []).length ? `<div class="section-title">Confirm in writing before any deposit</div><ul class="list">${p.verify_checklist.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
       ` : `<p class="msg info">Still being scored. This usually takes under a minute; the page updates by itself.</p>`}
+      <div class="section-title">Availability for ${esc(tripWeek())} ${availBadge(p)}</div>
+      ${p.avail_status !== "unknown" ? `<p class="tiny muted">Marked by ${esc(nameOf(p.avail_by) || "someone")} ${fmtDateTime(p.avail_at)}${p.avail_note ? `: ${esc(p.avail_note)}` : ""}</p>` : `<p class="tiny muted">Nobody has checked the host's calendar yet. The site can't read availability from the listing sites; a person has to look and mark it here.</p>`}
+      <div class="actions">
+        ${p.avail_status !== "available" ? `<button class="btn small" data-avail="${p.id}" data-status="available">✓ I checked: available for our week</button>` : ""}
+        ${!isDq(p) ? `<button class="btn small danger" data-avail="${p.id}" data-status="unavailable">✗ Not available: disqualify</button>` : `<button class="btn small" data-avail="${p.id}" data-status="unknown">Undo disqualification</button>`}
+      </div>
       ${p.ai_pick ? `<div class="section-title">Why Claude recommends it <i class="pill ai">AI Selected</i></div><p>${esc(p.ai_note || "")}</p>${familyMatchesFor(p).length ? `<p class="msg ok">Also picked by ${familyMatchesFor(p).map((m) => esc(householdOf(m.submitted_by))).filter((v, i, a) => a.indexOf(v) === i).join(", ")}.</p>` : ""}<div class="actions"><button class="btn primary small" data-adopt="${p.id}">Adopt as one of my household's houses</button></div>` : ""}
       ${!p.ai_pick && aiMatchFor(p) ? `<p class="msg ok"><i class="pill match">Matches an AI Selected house</i> Claude independently recommended this same house. <a href="#" data-open-prop="${aiMatchFor(p).id}">See its note</a>.</p>` : ""}
       ${p.notes ? `<div class="section-title">Notes from whoever added it</div><p>${esc(p.notes)}</p>` : ""}
@@ -351,17 +366,20 @@
     $$("#preview-form button, #submit-form button, form.nominate-form button, [data-adopt]").forEach((b) => { if (nominationsLocked()) { b.disabled = true; b.title = "Nominations are closed"; } });
     $("#mine-list").innerHTML = mine.length ? mine.map((p) => `<div class="card mine-item">
       <div><div class="title" style="font-weight:600"><a href="#" data-open-prop="${p.id}">${esc(p.title)}</a></div>
-      <div class="meta muted tiny">${esc(destOf(p)?.name || p.city)} · ${p.bedrooms ?? "?"} BR · ${p.status === "scored" ? p.total + "/100" : "scoring…"} ${p.status === "scored" && !p.gate_pass ? '· <i class="pill warn">bed plan ✗</i>' : ""} · added by ${esc(nameOf(p.submitted_by))}</div></div>
+      <div class="meta muted tiny">${esc(destOf(p)?.name || p.city)} · ${p.bedrooms ?? "?"} BR · ${p.status === "scored" ? p.total + "/100" : "scoring…"} ${p.status === "scored" && !p.gate_pass ? '· <i class="pill warn">bed plan ✗</i>' : ""} ${availBadge(p, true)} · added by ${esc(nameOf(p.submitted_by))}</div></div>
       <div class="actions"><button class="star-btn ${p.is_finalist ? "on" : ""}" data-star="${p.id}" ${p.status !== "scored" || nominationsLocked() ? "disabled" : ""}>${p.is_finalist ? "★ Finalist" : "☆ Make finalist"}</button></div>
     </div>`).join("") : `<p class="empty">Your household hasn't added a house yet.</p>`;
   }
 
   async function toggleFinalist(id) {
     const p = S.props.find((x) => x.id === id);
+    if (!p.is_finalist && isDq(p)) { toast("This house is marked not available for our week, so it can't be a finalist. Undo that in its details if it's wrong.", 6000); return; }
+    if (!p.is_finalist && p.avail_status === "unknown" && !confirm(`Nobody has confirmed this house is available for ${tripWeek()}. Star it anyway? (Please check the host's calendar soon and mark it in the house details.)`)) return;
     const { error } = await sb.from("properties").update({ is_finalist: !p.is_finalist }).eq("id", id);
     if (error) {
       if (/finalist_cap/.test(error.message)) toast("Your household already has its two finalists. Un-star one first.", 4500);
       else if (/nominations_locked/.test(error.message)) toast("Nominations are closed; the ballot is set.", 4500);
+      else if (/disqualified/.test(error.message)) toast("This house is disqualified (not available).", 4500);
       else toast(error.message, 5000);
       return;
     }
@@ -448,12 +466,19 @@
 
     // global click delegation
     document.addEventListener("click", async (e) => {
-      const t = e.target.closest("[data-open-dest],[data-open-prop],[data-goto-lodging],[data-star],[data-rescore-prop],[data-edit-prop],[data-del-prop],[data-rescore-dest],[data-del-dest],[data-adopt]");
+      const t = e.target.closest("[data-open-dest],[data-open-prop],[data-goto-lodging],[data-star],[data-rescore-prop],[data-edit-prop],[data-del-prop],[data-rescore-dest],[data-del-dest],[data-adopt],[data-avail]");
       if (!t) return;
       if (t.dataset.openDest) { e.preventDefault(); const d = S.dests.find((x) => x.id === t.dataset.openDest); if (d) destModal(d); }
       else if (t.dataset.openProp) { e.preventDefault(); const p = S.props.find((x) => x.id === t.dataset.openProp); if (p) propModal(p); }
       else if (t.dataset.gotoLodging) { S.filter = t.dataset.gotoLodging; renderLodging(); showTab("lodging"); }
       else if (t.dataset.star) { toggleFinalist(t.dataset.star); }
+      else if (t.dataset.avail) {
+        const status = t.dataset.status;
+        let note = "";
+        if (status === "unavailable") { note = prompt("What did you find? (e.g. 'Host calendar shows booked June 5–12', 'Owner said 3-night max'). This disqualifies the house from the ballot."); if (note === null) return; }
+        else if (status === "available") { note = prompt("Optional: how you confirmed it (e.g. 'Called host 9/8, open for our week, $9,800').") || ""; }
+        if (await setAvailability(t.dataset.avail, status, note)) { const p = S.props.find((x) => x.id === t.dataset.avail); if (p) propModal(p); toast(status === "unavailable" ? "Disqualified. It's off the ballot and can't be starred." : status === "available" ? "Marked available. Thank you for checking." : "Disqualification removed."); }
+      }
       else if (t.dataset.adopt) {
         t.disabled = true; t.textContent = "Adopting…";
         try { const r = await callFn("ingest", { action: "adopt", property_id: t.dataset.adopt }); await loadAll(); renderAll(); closeModal(); toast(r.already ? "You already adopted this one. It's in My picks." : "Adopted. It's now in My picks under your household; star it to put it on the ballot."); showTab("mine"); }
@@ -493,7 +518,7 @@
   }
 
   // ---------- vote ----------
-  function finalists() { return S.props.filter((p) => p.is_finalist && p.status === "scored"); }
+  function finalists() { return S.props.filter((p) => p.is_finalist && p.status === "scored" && !isDq(p)); }
   let ranking = null; // array of property ids (local editing state)
   function renderVote() {
     const area = $("#vote-area");
@@ -567,12 +592,12 @@
   function recCard(p, rank) {
     const d = destOf(p); const det = p.details || {};
     const matches = familyMatchesFor(p);
-    return `<div class="card rec-card">
+    return `<div class="card rec-card ${isDq(p) ? "dq" : ""}">
       <div class="thumb" style="${p.image_url ? `background-image:url('${esc(p.image_url)}')` : ""}"></div>
       <div>
         <div class="title-row"><h3>${rank ? `#${rank} ` : ""}<a href="#" data-open-prop="${p.id}">${esc(p.title)}</a> <i class="pill ai">AI Selected</i></h3><span class="mini-score">${p.status === "scored" ? p.total : "…"}<small>/100</small></span></div>
         <div class="muted tiny">${esc(d?.name || "")} · ${p.bedrooms ?? "?"} BR · ${p.bathrooms ?? "?"} BA · sleeps ${p.sleeps ?? "?"}${p.price_night ? " · " + money(p.price_night) + "/night" : ""}${p.rating ? ` · ★ ${p.rating}${p.review_count ? ` (${p.review_count})` : ""}` : ""}
-          ${p.gate_pass ? '<i class="pill ok">sleeps us right ✓</i>' : '<i class="pill warn">bed plan short ✗</i>'}
+          ${p.gate_pass ? '<i class="pill ok">sleeps us right ✓</i>' : '<i class="pill warn">bed plan short ✗</i>'} ${availBadge(p, true)}
           ${matches.length ? `<i class="pill match">Also picked by ${matches.map((m) => esc(householdOf(m.submitted_by))).filter((v, i, a) => a.indexOf(v) === i).join(", ")}</i>` : ""}</div>
         <p>${esc(p.ai_note || p.ai_summary || "")}</p>
         ${det.bed_plan ? `<p class="tiny"><b>Beds:</b> ${esc(det.bed_plan)}</p>` : ""}
@@ -582,10 +607,10 @@
   }
   function renderRecs() {
     const area = $("#recs-area");
-    const picks = aiPicks().filter((p) => p.status === "scored").sort((a, b) => b.total - a.total);
+    const picks = aiPicks().filter((p) => p.status === "scored").sort((a, b) => (isDq(a) - isDq(b)) || b.total - a.total);
     const recs = S.settings.ai_recs || {};
     if (!picks.length) { area.innerHTML = `<p class="empty">Research is still running. Check back shortly.</p>`; return; }
-    const top = (recs.top || []).map((t) => ({ ...t, p: picks.find((x) => x.id === t.property_id) })).filter((t) => t.p);
+    const top = (recs.top || []).map((t) => ({ ...t, p: picks.find((x) => x.id === t.property_id) })).filter((t) => t.p && !isDq(t.p));
     let html = recs.intro ? `<div class="card" style="margin-bottom:14px">${recs.intro.split(/\n\n+/).map((para) => `<p>${esc(para)}</p>`).join("")}${recs.updated_at ? `<p class="tiny muted">Research date: ${fmtDate(recs.updated_at)}. Prices are what the listing pages showed and will move with dates.</p>` : ""}</div>` : "";
     if (top.length) {
       html += `<h3>If Claude had to pick</h3><div class="cards">` + top.map((t, i) => `<div class="card"><div class="title-row"><b>#${i + 1} <a href="#" data-open-prop="${t.p.id}">${esc(t.p.title)}</a></b><span class="muted tiny">${esc(destOf(t.p)?.name || "")} · ${t.p.total}/100</span></div><p>${esc(t.why)}</p></div>`).join("") + `</div>`;
@@ -674,6 +699,7 @@
         <label>Nominations lock (your local time) <input type="datetime-local" id="adm-nomclose" value="${v.nominations_close ? toLocalInput(v.nominations_close) : ""}"></label>
         <label>Voting closes (your local time) <input type="datetime-local" id="adm-closes" value="${closesLocal}"></label>
         <label>Finalists per household <input type="number" id="adm-cap" min="1" max="5" value="${v.max_finalists_per_household ?? 2}"></label>
+        <div class="row"><label>Trip check-in <input type="date" id="adm-checkin" value="${S.settings.trip?.check_in || ""}"></label><label>Trip check-out <input type="date" id="adm-checkout" value="${S.settings.trip?.check_out || ""}"></label></div>
         <button class="btn primary" id="adm-save">Save voting settings</button>
         <p class="tiny muted">Family code for new accounts is set on the server (INVITE_CODE). Current: <b>JUNE2027FAM</b> unless you changed it.</p>
       </div></div>
@@ -688,7 +714,9 @@
       const nominations_close = $("#adm-nomclose").value ? new Date($("#adm-nomclose").value).toISOString() : null;
       const value = { ...v, open: $("#adm-open").checked, results_public: $("#adm-public").checked, closes, nominations_close, max_finalists_per_household: Number($("#adm-cap").value) || 2 };
       const { error } = await sb.from("settings").upsert({ key: "voting", value });
-      if (error) toast(error.message, 5000); else { toast("Saved."); await loadAll(); renderAll(); }
+      const trip = { ...(S.settings.trip || {}), check_in: $("#adm-checkin").value || null, check_out: $("#adm-checkout").value || null };
+      const { error: e2 } = await sb.from("settings").upsert({ key: "trip", value: trip });
+      if (error || e2) toast((error || e2).message, 5000); else { toast("Saved."); await loadAll(); renderAll(); }
     };
     $$("[data-reset]", area).forEach((b) => b.onclick = async () => {
       const pw = prompt(`New password for ${b.dataset.reset} (8+ characters):`);
