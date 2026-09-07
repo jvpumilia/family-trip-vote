@@ -171,3 +171,39 @@ export function sumScores(scores: Record<string, { score: number }>): number {
   }
   return total;
 }
+
+const nullable = (t: string, description = "") => ({ type: [t, "null"], description });
+export const EXTRACT_SCHEMA = {
+  type: "object", additionalProperties: false,
+  required: ["title", "city", "state", "bedrooms", "bathrooms", "sleeps", "price_night", "price_total", "summary", "amenities"],
+  properties: {
+    title: nullable("string", "The house's name as the listing gives it"),
+    city: nullable("string", "Town the house is in (not the company's office town)"),
+    state: nullable("string", "Two-letter state"),
+    bedrooms: nullable("integer", "Bedrooms the listing states"),
+    bathrooms: nullable("number"),
+    sleeps: nullable("integer"),
+    price_night: nullable("number", "Nightly rate in USD if the page states one"),
+    price_total: nullable("number", "Weekly total in USD if the page states one"),
+    summary: { type: "string", description: "The listing's own description, condensed to the facts that matter for a 14-person family: rooms, beds, pools, game room, theater, kitchen, parking, location" },
+    amenities: { type: "array", items: { type: "string" } },
+  },
+};
+export type Extracted = { title: string | null; city: string | null; state: string | null; bedrooms: number | null; bathrooms: number | null; sleeps: number | null; price_night: number | null; price_total: number | null; summary: string; amenities: string[] };
+
+/** Pull listing facts out of raw page text with a fast model. */
+export async function extractListing(url: string, text: string): Promise<Extracted | null> {
+  if (!text || text.length < 200) return null;
+  const params: Record<string, unknown> = {
+    model: Deno.env.get("CLAUDE_EXTRACT_MODEL") || "claude-sonnet-5",
+    max_tokens: 2000,
+    system: "You extract facts from vacation-rental web pages. Use only what the page text says. Use null for anything the page does not state. The town must be where the house is, not where the rental company is based; if the page names a resort or community, still give the town.",
+    messages: [{ role: "user", content: `URL: ${url}\n\nPAGE TEXT:\n${text.slice(0, 14000)}` }],
+    output_config: { effort: "low", format: { type: "json_schema", schema: EXTRACT_SCHEMA } },
+  };
+  // deno-lint-ignore no-explicit-any
+  const res = await (client.beta.messages as any).create(params);
+  if (res.stop_reason === "refusal") return null;
+  const t = (res.content as Array<{ type: string; text?: string }>).filter((b) => b.type === "text").map((b) => b.text || "").join("");
+  try { return JSON.parse(t) as Extracted; } catch { return null; }
+}

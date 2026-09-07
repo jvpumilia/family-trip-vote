@@ -342,7 +342,7 @@
       sf.rating.value = pre?.rating ?? ""; sf.review_count.value = pre?.review_count ?? "";
       sf.title.value = pre?.title || ""; sf.city.value = pre?.city || ""; sf.state.value = pre?.state || "";
       sf.bedrooms.value = pre?.bedrooms ?? ""; sf.bathrooms.value = pre?.bathrooms ?? ""; sf.sleeps.value = pre?.sleeps ?? "";
-      sf.price_night.value = ""; sf.price_total.value = ""; sf.notes.value = "";
+      sf.price_night.value = pre?.price_night ?? ""; sf.price_total.value = pre?.price_total ?? ""; sf.notes.value = "";
       sf.dataset.editing = "";
       $("#submit-btn").textContent = "Save & score it";
       (pre?.title ? sf.city : sf.title).focus();

@@ -1,7 +1,7 @@
 import { corsHeaders, json, err } from "../_shared/cors.ts";
 import { adminClient, requireUser } from "../_shared/supa.ts";
 import { scrape, geocode, milesBetween, stateAbbr, detectSource, canonicalUrl } from "../_shared/scrape.ts";
-import { askJson, FAMILY_CONTEXT, DEST_RUBRIC, PROP_RUBRIC, DEST_SCHEMA, PROP_SCHEMA, sumScores } from "../_shared/claude.ts";
+import { askJson, extractListing, FAMILY_CONTEXT, DEST_RUBRIC, PROP_RUBRIC, DEST_SCHEMA, PROP_SCHEMA, sumScores } from "../_shared/claude.ts";
 
 const MATCH_MILES = 45;
 
@@ -64,6 +64,21 @@ Deno.serve(async (req) => {
       const url = String(body.url || "").trim();
       if (!/^https?:\/\//i.test(url)) return err("Paste a full link that starts with http.");
       const s = await scrape(url);
+      const incomplete = !s.city || !s.state || !s.bedrooms || !s.bathrooms || !s.sleeps;
+      if (incomplete && s.text && s.text.length > 200) {
+        try {
+          const x = await extractListing(s.url, s.text);
+          if (x) {
+            s.title = s.title && s.source === "airbnb" ? s.title : (x.title || s.title);
+            s.city = s.city || x.city; s.state = s.state || stateAbbr(x.state); s.bedrooms = s.bedrooms ?? x.bedrooms;
+            s.bathrooms = s.bathrooms ?? x.bathrooms; s.sleeps = s.sleeps ?? x.sleeps;
+            (s as unknown as Record<string, unknown>).price_night = x.price_night; (s as unknown as Record<string, unknown>).price_total = x.price_total;
+            if (!s.description || s.description.length < 300) s.description = [x.summary, x.amenities?.length ? "Amenities: " + x.amenities.join(", ") : ""].filter(Boolean).join("\n\n");
+            s.note = "We read this page with a little AI help. Please double-check the town, bedrooms and bathrooms before saving.";
+            s.ok = !!(s.city && s.bedrooms);
+          }
+        } catch (e) { console.error("extract failed", e); }
+      }
       return json({ prefill: { ...s, text: undefined }, source: s.source });
     }
 

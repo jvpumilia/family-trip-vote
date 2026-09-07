@@ -126,8 +126,9 @@ export async function scrape(url: string): Promise<Scraped> {
     out.bedrooms = num(/(\d+)\s*(?:BR|bedrooms?)\b/i, blob);
     out.bathrooms = num(/([\d.]+)\s*(?:BA|baths?|bathrooms?)\b/i, blob);
     out.sleeps = num(/sleeps\s*(\d+)/i, blob);
-    const cityFromTitle = (ogTitle || decode(title)).match(/ - ([A-Za-z .'\-]+?)\s*\|\s*Vrbo/i)?.[1];
-    if (cityFromTitle && !/browse photos/i.test(cityFromTitle)) out.city = cityFromTitle.trim();
+    const parts = (ogTitle || decode(title)).replace(/\s*\|\s*Vrbo.*$/i, "").split(/\s+-\s+/);
+    const cityFromTitle = parts.length > 1 ? parts[parts.length - 1].trim() : "";
+    if (cityFromTitle && /^[A-Za-z .']{3,30}$/.test(cityFromTitle) && !/browse photos|hot tub|pool|view|cabin|home|lodge/i.test(cityFromTitle)) out.city = cityFromTitle;
     const got = await readerBackup(url, out);
     out.note = got
       ? "VRBO numbers were read through a backup reader. Double-check bedrooms, bathrooms and the town before saving."
@@ -144,7 +145,7 @@ export async function scrape(url: string): Promise<Scraped> {
   }
   // visible text sample for the scorer (strip tags/scripts)
   const text = html.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
-  out.text = decode(text).slice(0, 6000);
+  out.text = decode(text).slice(0, 14000);
   return out;
 }
 
@@ -153,7 +154,7 @@ async function readerBackup(url: string, out: Scraped): Promise<boolean> {
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 30000);
-    const res = await fetch("https://r.jina.ai/" + url, { headers: { "Accept": "text/plain", "User-Agent": UA }, signal: ctrl.signal });
+    const res = await fetch("https://r.jina.ai/" + url, { headers: { "Accept": "text/plain" }, signal: ctrl.signal }); // no browser UA: their edge challenges it
     clearTimeout(t);
     if (!res.ok) return false;
     const md = (await res.text()).slice(0, 200000);
