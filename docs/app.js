@@ -41,6 +41,8 @@
   const aiMatchFor = (p) => p.ai_pick ? null : aiPicks().find((a) => a.id === p.adopted_from || (a.url && p.url && normUrl(a.url) === normUrl(p.url))) || null;
   /** family houses that match an AI pick */
   const familyMatchesFor = (a) => S.props.filter((p) => !p.ai_pick && (p.adopted_from === a.id || (a.url && p.url && normUrl(a.url) === normUrl(p.url))));
+  const nomLock = () => { const c = S.settings.voting?.nominations_close; return c ? new Date(c) : null; };
+  const nominationsLocked = () => { const l = nomLock(); return !!l && Date.now() > l.getTime(); };
   const votingOpen = () => { const v = S.settings.voting || {}; if (v.open === false) return false; if (v.closes && Date.now() > new Date(v.closes).getTime()) return false; return true; };
   const isAdmin = () => !!S.profile?.is_admin;
 
@@ -337,11 +339,14 @@
     const mine = S.props.filter((p) => householdOf(p.submitted_by) === hh);
     const fin = mine.filter((p) => p.is_finalist);
     const cap = S.settings.voting?.max_finalists_per_household ?? 2;
-    $("#finalist-meter").innerHTML = `<b>${esc(hh)}</b> · ${mine.length} house${mine.length === 1 ? "" : "s"} added · <b>${fin.length} of ${cap}</b> finalists starred ${fin.length < cap ? `<span class="muted">— star ${cap - fin.length} more to fill your slots</span>` : `<span class="muted">— all set</span>`}`;
+    const lock = nomLock();
+    const lockLine = lock ? (nominationsLocked() ? `<br><span class="pill warn">Nominations closed ${fmtDateTime(lock)}</span> <span class="muted">The ballot is set. You can still vote.</span>` : `<br><span class="muted tiny">Add houses and set your finalists by <b>${fmtDateTime(lock)}</b>. After that the ballot is locked and voting runs until ${fmtDateTime(S.settings.voting?.closes)}.</span>`) : "";
+    $("#finalist-meter").innerHTML = `<b>${esc(hh)}</b> · ${mine.length} house${mine.length === 1 ? "" : "s"} added · <b>${fin.length} of ${cap}</b> finalists starred ${fin.length < cap ? `<span class="muted">— star ${cap - fin.length} more to fill your slots</span>` : `<span class="muted">— all set</span>`}${lockLine}`;
+    $$("#preview-form button, #submit-form button, form.nominate-form button, [data-adopt]").forEach((b) => { if (nominationsLocked()) { b.disabled = true; b.title = "Nominations are closed"; } });
     $("#mine-list").innerHTML = mine.length ? mine.map((p) => `<div class="card mine-item">
       <div><div class="title" style="font-weight:600"><a href="#" data-open-prop="${p.id}">${esc(p.title)}</a></div>
       <div class="meta muted tiny">${esc(destOf(p)?.name || p.city)} · ${p.bedrooms ?? "?"} BR · ${p.status === "scored" ? p.total + "/100" : "scoring…"} ${p.status === "scored" && !p.gate_pass ? '· <i class="pill warn">bed plan ✗</i>' : ""} · added by ${esc(nameOf(p.submitted_by))}</div></div>
-      <div class="actions"><button class="star-btn ${p.is_finalist ? "on" : ""}" data-star="${p.id}" ${p.status !== "scored" ? "disabled" : ""}>${p.is_finalist ? "★ Finalist" : "☆ Make finalist"}</button></div>
+      <div class="actions"><button class="star-btn ${p.is_finalist ? "on" : ""}" data-star="${p.id}" ${p.status !== "scored" || nominationsLocked() ? "disabled" : ""}>${p.is_finalist ? "★ Finalist" : "☆ Make finalist"}</button></div>
     </div>`).join("") : `<p class="empty">Your household hasn't added a house yet.</p>`;
   }
 
@@ -350,6 +355,7 @@
     const { error } = await sb.from("properties").update({ is_finalist: !p.is_finalist }).eq("id", id);
     if (error) {
       if (/finalist_cap/.test(error.message)) toast("Your household already has its two finalists. Un-star one first.", 4500);
+      else if (/nominations_locked/.test(error.message)) toast("Nominations are closed; the ballot is set.", 4500);
       else toast(error.message, 5000);
       return;
     }
@@ -490,7 +496,7 @@
     else ranking = ranking.filter((id) => fin.some((p) => p.id === id));
     const v = S.settings.voting || {};
     const open = votingOpen();
-    const deadline = v.closes ? `Voting closes ${fmtDateTime(v.closes)}.` : "";
+    const deadline = (v.closes ? `Voting closes ${fmtDateTime(v.closes)}.` : "") + (nomLock() ? (nominationsLocked() ? " The ballot is locked." : ` Houses can be added and starred until ${fmtDateTime(nomLock())}; after that the ballot is fixed.`) : "");
     const noBallot = S.dests.filter((d) => !fin.some((p) => p.destination_id === d.id)).map((d) => d.name);
     let html = `<div class="notice">${open ? deadline : "<b>Voting is closed.</b>"} ${S.votes.length} of ${S.profiles.length} people have voted.${noBallot.length ? `<br><span class="muted tiny">Not on the ballot (no finalist house yet): ${noBallot.map(esc).join(", ")}.</span>` : ""}</div>`;
     if (!fin.length) { area.innerHTML = html + `<p class="empty">Nothing is on the ballot yet. A house appears here once its household stars it as one of their two finalists on the My picks tab.</p>`; return; }
@@ -626,7 +632,8 @@
       <div class="card"><h3>Voting</h3><div class="stack">
         <label class="switch"><input type="checkbox" id="adm-open" ${v.open !== false ? "checked" : ""}> Voting is open</label>
         <label class="switch"><input type="checkbox" id="adm-public" ${v.results_public ? "checked" : ""}> Results visible to everyone</label>
-        <label>Closes (your local time) <input type="datetime-local" id="adm-closes" value="${closesLocal}"></label>
+        <label>Nominations lock (your local time) <input type="datetime-local" id="adm-nomclose" value="${v.nominations_close ? toLocalInput(v.nominations_close) : ""}"></label>
+        <label>Voting closes (your local time) <input type="datetime-local" id="adm-closes" value="${closesLocal}"></label>
         <label>Finalists per household <input type="number" id="adm-cap" min="1" max="5" value="${v.max_finalists_per_household ?? 2}"></label>
         <button class="btn primary" id="adm-save">Save voting settings</button>
         <p class="tiny muted">Family code for new accounts is set on the server (INVITE_CODE). Current: <b>JUNE2027FAM</b> unless you changed it.</p>
@@ -639,7 +646,8 @@
       </div></div>`;
     $("#adm-save").onclick = async () => {
       const closes = $("#adm-closes").value ? new Date($("#adm-closes").value).toISOString() : null;
-      const value = { ...v, open: $("#adm-open").checked, results_public: $("#adm-public").checked, closes, max_finalists_per_household: Number($("#adm-cap").value) || 2 };
+      const nominations_close = $("#adm-nomclose").value ? new Date($("#adm-nomclose").value).toISOString() : null;
+      const value = { ...v, open: $("#adm-open").checked, results_public: $("#adm-public").checked, closes, nominations_close, max_finalists_per_household: Number($("#adm-cap").value) || 2 };
       const { error } = await sb.from("settings").upsert({ key: "voting", value });
       if (error) toast(error.message, 5000); else { toast("Saved."); await loadAll(); renderAll(); }
     };

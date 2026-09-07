@@ -58,6 +58,14 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const admin = adminClient();
     const action = String(body.action || "");
+    // nominations lock: a week before the vote closes, the ballot is fixed
+    if (["submit", "nominate", "adopt"].includes(action)) {
+      const { data: vs } = await admin.from("settings").select("value").eq("key", "voting").maybeSingle();
+      const lock = vs?.value?.nominations_close ? new Date(vs.value.nominations_close) : null;
+      if (lock && Date.now() > lock.getTime() && !(profile?.is_admin && body.as_ai)) {
+        return err(`Nominations closed on ${lock.toLocaleDateString("en-US", { month: "long", day: "numeric" })}. The ballot is set; head to the Vote tab.`, 423);
+      }
+    }
 
     // 1) Paste a link -> read what we can from the page
     if (action === "preview") {
