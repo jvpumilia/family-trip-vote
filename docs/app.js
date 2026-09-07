@@ -20,7 +20,7 @@
     ["reviews", "Reviews", 10], ["logistics", "Parking & toddler logistics", 5],
   ];
 
-  const S = { session: null, profile: null, profiles: [], origins: [], dests: [], props: [], votes: [], settings: {}, tab: "map", map: null, layers: {}, selectedDest: null, filter: "", sort: "total" };
+  const S = { session: null, profile: null, profiles: [], origins: [], dests: [], props: [], votes: [], settings: {}, avail: [], tab: "map", map: null, layers: {}, selectedDest: null, filter: "", sort: "total" };
 
   // ---------- tiny UI helpers ----------
   let toastT;
@@ -110,14 +110,16 @@
 
   // ---------- data ----------
   async function loadAll() {
-    const [pr, o, d, p, v, st] = await Promise.all([
+    const [pr, o, d, p, v, st, av] = await Promise.all([
       sb.from("profiles").select("*"),
       sb.from("origins").select("*").order("sort"),
       sb.from("destinations").select("*"),
       sb.from("properties").select("*").order("created_at", { ascending: false }),
       sb.from("votes").select("*"),
       sb.from("settings").select("*"),
+      sb.from("availability").select("*").order("start_date"),
     ]);
+    S.avail = av.data || [];
     S.profiles = pr.data || []; S.origins = o.data || []; S.dests = d.data || []; S.props = p.data || []; S.votes = v.data || [];
     S.settings = Object.fromEntries((st.data || []).map((r) => [r.key, r.value]));
     S.profile = S.profiles.find((x) => x.id === S.session.user.id) || null;
@@ -137,7 +139,8 @@
       const refresh = () => { clearTimeout(t); t = setTimeout(async () => { if (!S.session) return; await loadAll(); renderAll(); }, 400); };
       S.channel = sb.channel("live").on("postgres_changes", { event: "*", schema: "public", table: "properties" }, refresh)
         .on("postgres_changes", { event: "*", schema: "public", table: "destinations" }, refresh)
-        .on("postgres_changes", { event: "*", schema: "public", table: "votes" }, refresh).subscribe();
+        .on("postgres_changes", { event: "*", schema: "public", table: "votes" }, refresh)
+        .on("postgres_changes", { event: "*", schema: "public", table: "availability" }, refresh).subscribe();
     }
     renderAll();
     resumePendingAi();
@@ -145,7 +148,7 @@
 
   function renderAll() {
     if (!S.session || !S.profile) return; // signed out, or an account that no longer exists
-    renderMap(); renderDests(); renderLodging(); renderMine(); renderVote(); renderRecs(); renderResults(); if (isAdmin()) renderAdmin();
+    renderMap(); renderDests(); renderLodging(); renderMine(); renderVote(); renderAvail(); renderRecs(); renderResults(); if (isAdmin()) renderAdmin();
   }
 
   // ---------- tabs ----------
@@ -293,6 +296,7 @@
         <div class="title">${esc(p.title)}</div>
         <div class="meta">${esc(d?.name || p.city)} · ${p.bedrooms ?? "?"} BR · ${p.bathrooms ?? "?"} BA · sleeps ${p.sleeps ?? "?"}</div>
         ${isDq(p) || p.avail_status === "available" ? `<div class="meta">${availBadge(p, true)}</div>` : ""}
+        ${S.avail.some((a) => a.property_id === p.id) ? strip(p) : ""}
         <div class="foot"><span class="meta">${p.price_night ? money(p.price_night) + "/night" : ""}${p.price_total ? " · " + money(p.price_total) + " week" : ""}</span>
         <span class="mini-score">${pending ? "…" : p.total}<small>/100</small></span></div>
       </div></div>`;
@@ -343,6 +347,7 @@
         ${p.avail_status !== "available" ? `<button class="btn small" data-avail="${p.id}" data-status="available">✓ I checked: available for our week</button>` : ""}
         ${!isDq(p) ? `<button class="btn small danger" data-avail="${p.id}" data-status="unavailable">✗ Not available: disqualify</button>` : `<button class="btn small" data-avail="${p.id}" data-status="unknown">Undo disqualification</button>`}
       </div>
+      ${availSection(p)}
       ${p.ai_pick ? `<div class="section-title">Why Claude recommends it <i class="pill ai">AI Selected</i></div><p>${esc(p.ai_note || "")}</p>${familyMatchesFor(p).length ? `<p class="msg ok">Also picked by ${familyMatchesFor(p).map((m) => esc(householdOf(m.submitted_by))).filter((v, i, a) => a.indexOf(v) === i).join(", ")}.</p>` : ""}<div class="actions"><button class="btn primary small" data-adopt="${p.id}">Adopt as one of my household's houses</button></div>` : ""}
       ${!p.ai_pick && aiMatchFor(p) ? `<p class="msg ok"><i class="pill match">Matches an AI Selected house</i> Claude independently recommended this same house. <a href="#" data-open-prop="${aiMatchFor(p).id}">See its note</a>.</p>` : ""}
       ${p.notes ? `<div class="section-title">Notes from whoever added it</div><p>${esc(p.notes)}</p>` : ""}
@@ -466,12 +471,17 @@
 
     // global click delegation
     document.addEventListener("click", async (e) => {
-      const t = e.target.closest("[data-open-dest],[data-open-prop],[data-goto-lodging],[data-star],[data-rescore-prop],[data-edit-prop],[data-del-prop],[data-rescore-dest],[data-del-dest],[data-adopt],[data-avail]");
+      const t = e.target.closest("[data-open-dest],[data-open-prop],[data-goto-lodging],[data-star],[data-rescore-prop],[data-edit-prop],[data-del-prop],[data-rescore-dest],[data-del-dest],[data-adopt],[data-avail],[data-del-win]");
       if (!t) return;
       if (t.dataset.openDest) { e.preventDefault(); const d = S.dests.find((x) => x.id === t.dataset.openDest); if (d) destModal(d); }
       else if (t.dataset.openProp) { e.preventDefault(); const p = S.props.find((x) => x.id === t.dataset.openProp); if (p) propModal(p); }
       else if (t.dataset.gotoLodging) { S.filter = t.dataset.gotoLodging; renderLodging(); showTab("lodging"); }
       else if (t.dataset.star) { toggleFinalist(t.dataset.star); }
+      else if (t.dataset.delWin) {
+        const w = S.avail.find((x) => x.id === t.dataset.delWin);
+        const { error } = await sb.from("availability").delete().eq("id", t.dataset.delWin);
+        if (error) toast(error.message, 5000); else { await loadAll(); renderAll(); const p = S.props.find((x) => x.id === w?.property_id); if (p) propModal(p); }
+      }
       else if (t.dataset.avail) {
         const status = t.dataset.status;
         let note = "";
@@ -516,6 +526,84 @@
       }
     });
   }
+
+  // ---------- availability calendar ----------
+  const iso = (d) => d.toISOString().slice(0, 10);
+  const addDays = (d, n) => { const x = new Date(d); x.setUTCDate(x.getUTCDate() + n); return x; };
+  function seasonWeeks() {
+    const t = S.settings.trip || {};
+    const start = new Date((t.season_start || "2027-05-01") + "T00:00:00Z"), end = new Date((t.season_end || "2027-08-20") + "T00:00:00Z");
+    const weeks = []; let d = start;
+    while (d <= end) { weeks.push({ start: iso(d), end: iso(addDays(d, 7)) }); d = addDays(d, 7); }
+    return weeks;
+  }
+  const weekLabel = (w) => new Date(w.start + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  const overlaps = (a1, a2, b1, b2) => a1 < b2 && b1 < a2; // [start,end) half-open
+  /** week status from recorded windows: booked (any booked overlap), avail (available covers the whole week), part (mix), or "" */
+  function weekStatus(propId, w) {
+    const ws = S.avail.filter((x) => x.property_id === propId);
+    const bookedHit = ws.some((x) => x.status === "booked" && overlaps(x.start_date, addDays(new Date(x.end_date + "T00:00:00Z"), 1).toISOString().slice(0, 10), w.start, w.end));
+    const availCover = ws.some((x) => x.status === "available" && x.start_date <= w.start && x.end_date >= addDays(new Date(w.end + "T00:00:00Z"), -1).toISOString().slice(0, 10));
+    const availTouch = ws.some((x) => x.status === "available" && overlaps(x.start_date, addDays(new Date(x.end_date + "T00:00:00Z"), 1).toISOString().slice(0, 10), w.start, w.end));
+    if (bookedHit && availTouch) return "part";
+    if (bookedHit) return "booked";
+    if (availCover) return "avail";
+    if (availTouch) return "part";
+    return "";
+  }
+  const isTripWeek = (w) => { const t = S.settings.trip || {}; return !!(t.check_in && t.check_in >= w.start && t.check_in < w.end); };
+  function strip(p) {
+    return `<div class="strip">${seasonWeeks().map((w) => `<div class="cell ${weekStatus(p.id, w)} ${isTripWeek(w) ? "trip" : ""}" title="${weekLabel(w)}"></div>`).join("")}</div>`;
+  }
+  function renderAvail() {
+    const area = $("#avail-area");
+    const sel = $("#avail-filter"); const cur = sel.value;
+    sel.innerHTML = `<option value="">All destinations</option>` + S.dests.map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join("");
+    sel.value = cur || "";
+    const onlyKnown = $("#avail-only-known").checked;
+    const weeks = seasonWeeks();
+    let rows = S.props.filter((p) => p.status === "scored" && (!cur || p.destination_id === cur));
+    if (onlyKnown) rows = rows.filter((p) => S.avail.some((a) => a.property_id === p.id) || p.avail_status !== "unknown");
+    rows.sort((a, b) => (isDq(a) - isDq(b)) || (b.is_finalist - a.is_finalist) || (b.total - a.total));
+    if (!rows.length) { area.innerHTML = `<p class="empty">Nothing to show yet.</p>`; return; }
+    const t = S.settings.trip || {};
+    area.innerHTML = `<div class="avail-legend"><span><i style="background:#8fd3a6"></i>open (confirmed)</span><span><i style="background:#ef9a9a"></i>booked</span><span><i style="background:linear-gradient(135deg,#8fd3a6 50%,#ef9a9a 50%)"></i>partly</span><span><i style="background:#ebe5d8"></i>nobody has checked</span>${t.check_in ? `<span><i style="outline:2px solid var(--accent);outline-offset:-2px"></i>our week (${fmtDate(t.check_in)})</span>` : `<span class="muted">Joseph can set our target week on the Admin tab.</span>`}</div>
+      <div class="avail-wrap"><div class="avail-grid" style="grid-template-columns:230px repeat(${weeks.length},minmax(38px,1fr))">
+        <div class="hdr"></div>${weeks.map((w) => `<div class="hdr ${isTripWeek(w) ? "trip" : ""}">${weekLabel(w)}</div>`).join("")}
+        ${rows.map((p) => `<div class="rowlabel"><a href="#" data-open-prop="${p.id}">${esc(p.title.length > 34 ? p.title.slice(0, 33) + "…" : p.title)}</a><span class="s">${esc(destOf(p)?.name?.split(" / ")[0]?.split(":")[0] || "")} · ${p.total}${p.is_finalist ? " · ★" : ""}${p.ai_pick ? " · AI" : ""}${isDq(p) ? " · disqualified" : ""}</span></div>` +
+          weeks.map((w) => { const st = weekStatus(p.id, w); const notes = S.avail.filter((x) => x.property_id === p.id && overlaps(x.start_date, addDays(new Date(x.end_date + "T00:00:00Z"), 1).toISOString().slice(0, 10), w.start, w.end)).map((x) => `${x.status} ${fmtDate(x.start_date)}–${fmtDate(x.end_date)}${x.note ? ": " + x.note : ""} (${nameOf(x.created_by) || "?"})`).join("\n"); return `<div class="cell ${st} ${isTripWeek(w) ? "trip" : ""} ${isDq(p) ? "dq" : ""}" data-open-prop="${p.id}" title="${esc(weekLabel(w) + (notes ? "\n" + notes : "\nNothing recorded"))}"></div>`; }).join("")).join("")}
+      </div></div>
+      <p class="tiny muted">Hover a square for the details. Click a house name to add what you found on its calendar.</p>`;
+  }
+  $("#avail-filter").onchange = renderAvail;
+  $("#avail-only-known").onchange = renderAvail;
+  function availSection(p) {
+    const t = S.settings.trip || {};
+    const ws = S.avail.filter((x) => x.property_id === p.id);
+    const min = t.season_start || "2027-05-01", max = t.season_end || "2027-08-20";
+    return `<div class="section-title">Calendar: what people have found</div>${strip(p)}
+      ${ws.length ? ws.map((x) => `<div class="win-row"><i class="pill ${x.status === "available" ? "ok" : "warn"}">${x.status === "available" ? "open" : "booked"}</i><span>${fmtDate(x.start_date)} – ${fmtDate(x.end_date)}${x.note ? ` · ${esc(x.note)}` : ""} <span class="muted tiny">(${esc(nameOf(x.created_by) || "?")}, ${fmtDate(x.created_at)})</span></span>${x.created_by === S.session.user.id || isAdmin() ? `<button class="btn small ghost" data-del-win="${x.id}">✕</button>` : "<span></span>"}</div>`).join("") : `<p class="tiny muted">No dates recorded yet.</p>`}
+      <form class="win-form stack" data-prop="${p.id}" style="margin-top:.6em">
+        <div class="row three">
+          <label>From <input type="date" name="start" min="${min}" max="${max}" required></label>
+          <label>To <input type="date" name="end" min="${min}" max="${max}" required></label>
+          <label>Status <select name="status"><option value="available">Open</option><option value="booked">Booked</option></select></label>
+        </div>
+        <div class="row"><input name="note" placeholder="Optional: where you saw it, price, minimum stay…"><button class="btn small primary" type="submit">Add dates</button></div>
+      </form>`;
+  }
+  document.addEventListener("submit", async (e) => {
+    const f = e.target.closest("form.win-form"); if (!f) return;
+    e.preventDefault();
+    const fd = Object.fromEntries(new FormData(f).entries());
+    if (!fd.start || !fd.end) return;
+    if (fd.end < fd.start) { toast("The 'to' date is before the 'from' date."); return; }
+    const { error } = await sb.from("availability").insert({ property_id: f.dataset.prop, start_date: fd.start, end_date: fd.end, status: fd.status, note: fd.note || null, created_by: S.session.user.id });
+    if (error) { toast(error.message, 6000); return; }
+    await loadAll(); renderAll();
+    const p = S.props.find((x) => x.id === f.dataset.prop); if (p) propModal(p);
+    toast("Added. Thanks for checking.");
+  });
 
   // ---------- vote ----------
   function finalists() { return S.props.filter((p) => p.is_finalist && p.status === "scored" && !isDq(p)); }

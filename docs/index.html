@@ -55,6 +55,7 @@
     <button class="tab" data-tab="destinations">Destinations</button>
     <button class="tab" data-tab="lodging">Lodging</button>
     <button class="tab" data-tab="mine">My picks</button>
+    <button class="tab" data-tab="avail">Availability</button>
     <button class="tab" data-tab="vote">Vote</button>
     <button class="tab" data-tab="recs">AI Selected</button>
     <button class="tab" data-tab="results">Results</button>
@@ -74,7 +75,7 @@
           <ol class="list">
             <li><b>Look around.</b> The Map and Destinations tabs show every place under consideration, scored the same way, with travel difficulty from each home.</li>
             <li><b>Add houses.</b> On My picks, paste a listing link (Airbnb, VRBO or a cabin company). The site reads the page, places it on the map, and scores it against our family's needs in about a minute. Add as many as you like; add the nightly price if the page doesn't show it.</li>
-            <li><b>Check availability.</b> The site can't read a host's calendar, so when you look at a house's dates, mark it in the house details: "available for our week" or "not available". Not available disqualifies it from the ballot.</li>
+            <li><b>Check availability.</b> The site can't read a host's calendar, so when you look at one, open the house and record the weeks you saw open or booked. The Availability tab lines every house up across May 1 to Aug 20 so we can see who is open when. "Not available for our week" disqualifies a house from the ballot.</li>
             <li><b>Star two finalists.</b> Each household stars the two houses it is actually recommending. Only starred houses go on the ballot, so a destination with no starred house can't be voted on. You can also adopt one of the AI Selected houses as your own.</li>
             <li><b>Vote.</b> Nominations and finalist stars lock on <b>Sept 21</b> so the ballot is fixed. Then rank the finalist houses from your favorite down; ranked-choice, changeable any time before voting closes <b>Sept 28</b>. We book the winner right after, because 7-bedroom houses for June go fast.</li>
           </ol>
@@ -192,6 +193,18 @@
         <div id="mine-list" class="cards"></div>
       </div>
     </div>
+  </section>
+
+  <section class="panel" data-panel="avail" hidden>
+    <div class="panel-head">
+      <h2>Availability, house by house</h2>
+      <p class="muted">Every Saturday-to-Saturday week from May 1 to Aug 20, 2027. When you look at a host's calendar, open the house and add what you saw; it shows up here for everyone. Green = someone confirmed it's open that week, red = booked, grey = nobody has checked.</p>
+      <div class="filters">
+        <select id="avail-filter"><option value="">All destinations</option></select>
+        <label class="switch" style="font-size:.9rem"><input type="checkbox" id="avail-only-known"> Only houses with something recorded</label>
+      </div>
+    </div>
+    <div id="avail-area"></div>
   </section>
 
   <section class="panel" data-panel="vote" hidden>
