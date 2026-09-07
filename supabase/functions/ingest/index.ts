@@ -237,7 +237,7 @@ Deno.serve(async (req) => {
       const upd = {
         scores, total, gate_pass: gate, ai_summary: r.ai_summary, red_flags: r.red_flags,
         verify_checklist: r.verify_checklist,
-        details: { ...(r.details as object), real_bedrooms: r.real_bedrooms, couple_rooms: couple, kid_rooms: kids, bed_plan: r.bed_plan }, elevation_ft: elevP,
+        details: { ...(r.details as object), real_bedrooms: r.real_bedrooms, couple_rooms: couple, kid_rooms: kids, bed_plan: r.bed_plan, highlights: Array.isArray(r.highlights) ? (r.highlights as string[]).slice(0, 12) : [] }, elevation_ft: elevP,
         status: "scored", updated_at: new Date().toISOString(),
       };
       const { data: saved, error } = await admin.from("properties").update(upd).eq("id", prop.id).select("*").single();

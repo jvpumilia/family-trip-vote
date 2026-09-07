@@ -290,6 +290,26 @@
       ${isAdmin() ? `<div class="actions"><button class="btn small" data-rescore-dest="${d.id}">Re-run AI scoring</button><button class="btn small danger" data-del-dest="${d.id}">Delete destination</button></div>` : ""}`);
   }
 
+  // ---------- highlights (amenities at a glance) ----------
+  const HL_ICONS = [[/indoor.*pool|pool.*indoor/i, "🏊"], [/pool|swim spa/i, "🏊"], [/hot ?tub|spa\b|jacuzzi/i, "♨️"], [/arcade|game ?room|pool table|air hockey|foosball|ping ?pong|billiard/i, "🕹️"], [/theater|theatre|cinema|movie/i, "🎬"], [/kitchen/i, "🍳"], [/fire ?pit|fireplace/i, "🔥"], [/lake|river|beach|ocean|water(front)?\b/i, "🌊"], [/view/i, "🏔️"], [/park(ing)?|garage|cars/i, "🚗"], [/crib|pack.?n.?play|high ?chair|toddler|baby/i, "👶"], [/bunk/i, "🛏️"], [/gym|fitness/i, "🏋️"], [/pickleball|tennis|basketball|court|golf|slide|playground|trampoline|zip/i, "🏀"], [/sauna|steam/i, "🧖"], [/washer|dryer|laundry/i, "🧺"], [/pet|dog/i, "🐾"], [/wifi|internet|workspace/i, "📶"], [/deck|patio|porch|balcony|yard|grill|bbq/i, "🌿"], [/elevator|accessib/i, "♿"], [/ev charg/i, "🔌"]];
+  const HL_DERIVE = [[/indoor (heated )?pool|private indoor pool/i, "Indoor pool"], [/outdoor pool|private pool|heated pool|swim spa|resort pool|pool access|pool table(?!)/i, "Pool"], [/hot ?tub|jacuzzi|spillover spa/i, "Hot tub"], [/game ?room|arcade/i, "Game room"], [/pool table|billiard/i, "Pool table"], [/air hockey|foosball|ping ?pong|shuffleboard/i, "Arcade games"], [/theater|theatre|cinema|movie room/i, "Theater"], [/fire ?pit/i, "Fire pit"], [/two kitchens|2 kitchens|second kitchen|chef'?s kitchens/i, "2 kitchens"], [/lake(front| access| view)/i, "Lake access"], [/river(front| access)/i, "River access"], [/beach|oceanfront|ocean view/i, "Beach / ocean"], [/mountain view/i, "Mountain views"], [/fenced/i, "Fenced yard"], [/playground/i, "Playground"], [/pickleball/i, "Pickleball"], [/basketball/i, "Basketball court"], [/sauna/i, "Sauna"], [/gym|fitness/i, "Gym"], [/crib|pack.?n.?play/i, "Crib available"], [/high ?chair/i, "High chair"], [/bunk/i, "Bunk room"], [/pet friendly|pets allowed|dog friendly/i, "Pet friendly"], [/ev charg/i, "EV charger"], [/washer/i, "Washer & dryer"], [/elevator/i, "Elevator"], [/water ?park|lazy river|splash/i, "Water park access"], [/trampoline/i, "Trampoline"], [/zip ?line/i, "Zip line"], [/slide/i, "Slide"], [/golf/i, "Golf nearby"]];
+  function highlightsFor(p) {
+    const det = p.details || {};
+    let hl = Array.isArray(det.highlights) && det.highlights.length ? det.highlights.slice(0, 12) : [];
+    if (!hl.length) {
+      const set = new Set();
+      if (det.indoor_pool) set.add("Indoor pool"); else if (det.outdoor_pool) set.add("Pool");
+      if (det.hot_tub) set.add("Hot tub"); if (det.game_room) set.add("Game room"); if (det.theater) set.add("Theater");
+      const text = [p.description || "", det.kitchen_notes || "", det.parking || "", p.ai_summary || ""].join(" \n ");
+      HL_DERIVE.forEach(([re, label]) => { if (re.test(text) && !(label === "Pool" && set.has("Indoor pool"))) set.add(label); });
+      if (p.bathrooms >= 6) set.add(`${p.bathrooms} baths`);
+      hl = Array.from(set).slice(0, 12);
+    }
+    return hl;
+  }
+  const chip = (h) => { const ic = (HL_ICONS.find(([re]) => re.test(h)) || [null, "✓"])[1]; return `<span class="chip">${ic} ${esc(h)}</span>`; };
+  const highlightsHtml = (p, max) => { const hl = highlightsFor(p); return hl.length ? `<div class="chips">${hl.slice(0, max || 12).map(chip).join("")}</div>` : ""; };
+
   // ---------- lodging ----------
   function propCard(p, mine) {
     const d = destOf(p);
@@ -303,6 +323,7 @@
         <div class="meta">${esc(d?.name || p.city)} · ${p.bedrooms ?? "?"} BR · ${p.bathrooms ?? "?"} BA · sleeps ${p.sleeps ?? "?"}</div>
         ${isDq(p) || p.avail_status === "available" || p.elevation_ft > maxElev() ? `<div class="meta">${availBadge(p, true)} ${p.elevation_ft > maxElev() ? elevPill(p.elevation_ft) : ""}</div>` : ""}
         ${S.avail.some((a) => a.property_id === p.id) ? strip(p) : ""}
+        ${highlightsHtml(p, 3)}
         <div class="foot"><span class="meta">${p.price_night ? money(p.price_night) + "/night" : ""}${p.price_total ? " · " + money(p.price_total) + " week" : ""}</span>
         <span class="mini-score">${pending ? "…" : p.total}<small>/100</small></span></div>
       </div></div>`;
@@ -330,6 +351,7 @@
       ${photos.length > 1 ? `<div class="gallery">${photos.map((u, i) => `<img src="${esc(u)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-hero="${esc(u)}" class="${i === 0 ? "on" : ""}">`).join("")}</div>` : ""}
       <h2>${esc(p.title)}</h2>
       <p class="muted">${esc(d?.name || "")} · ${esc(p.city || "")}, ${esc(p.state || "")}${p.url ? ` · <a href="${esc(p.url)}" target="_blank" rel="noopener">Open the listing ↗</a>` : ""}</p>
+      ${highlightsFor(p).length ? `<div class="section-title" style="margin-top:.4em">Highlights</div>${highlightsHtml(p)}` : ""}
       <div class="kv">
         ${p.elevation_ft != null ? `<b>Elevation</b><span>${p.elevation_ft.toLocaleString()} ft ${p.elevation_ft > maxElev() ? `<i class="pill warn">above our ${maxElev().toLocaleString()} ft health limit</i>` : ""}</span>` : ""}
         <b>Bedrooms</b><span>${p.bedrooms ?? "?"} listed${det.real_bedrooms != null && det.real_bedrooms !== p.bedrooms ? ` · scorer thinks ${det.real_bedrooms} are real` : ""}</span>

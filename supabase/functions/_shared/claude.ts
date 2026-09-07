@@ -138,7 +138,7 @@ export const DEST_SCHEMA = {
 
 export const PROP_SCHEMA = {
   type: "object", additionalProperties: false,
-  required: ["scores", "real_bedrooms", "couple_rooms", "kid_rooms", "bed_plan", "gate_pass", "ai_summary", "red_flags", "verify_checklist", "details"],
+  required: ["scores", "real_bedrooms", "couple_rooms", "kid_rooms", "bed_plan", "gate_pass", "ai_summary", "red_flags", "verify_checklist", "details", "highlights"],
   properties: {
     scores: {
       type: "object", additionalProperties: false,
@@ -153,6 +153,7 @@ export const PROP_SCHEMA = {
     ai_summary: { type: "string", description: "3-4 plain sentences: what this house is, what it does well for us, what worries you." },
     red_flags: { type: "array", items: { type: "string" } },
     verify_checklist: { type: "array", items: { type: "string" }, description: "Things to confirm with the host in writing before a deposit." },
+    highlights: { type: "array", items: { type: "string" }, description: "Up to 12 short chips (2-4 words each) of the amenities that matter to this family and that the listing actually states: e.g. 'Indoor heated pool', 'Hot tub', 'Arcade game room', '100-inch theater', '2 kitchens', 'Parking for 6', 'Lake access', 'Fenced yard', 'Crib provided'. Facts only, no adjectives." },
     details: {
       type: "object", additionalProperties: false,
       required: ["indoor_pool", "outdoor_pool", "hot_tub", "game_room", "theater", "kitchen_notes", "parking", "toddler_notes"],
