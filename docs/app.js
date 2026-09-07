@@ -362,6 +362,7 @@
       <details class="quiet"><summary>More</summary>Added ${fmtDate(p.created_at)}${p.submitted_by ? ` by ${esc(nameOf(p.submitted_by))} (${esc(householdOf(p.submitted_by))})` : p.ai_pick ? " by Claude (AI Selected)" : " from the decision packet"}.</details>
       ${mine || isAdmin() ? `<div class="actions">
         <button class="btn small" data-rescore-prop="${p.id}">Re-run scoring</button>
+        ${p.url && p.source !== "airbnb" && p.source !== "vrbo" ? `<button class="btn small" data-rescore-prop="${p.id}" data-reread="1">Re-read the whole website &amp; re-score</button>` : ""}
         <button class="btn small" data-edit-prop="${p.id}">Edit details</button>
         <button class="btn small danger" data-del-prop="${p.id}">Delete</button></div>` : ""}`);
   }
@@ -503,7 +504,7 @@
       }
       else if (t.dataset.rescoreProp) {
         t.disabled = true; t.textContent = "Scoring…";
-        try { await callFn("ingest", { action: "score", property_id: t.dataset.rescoreProp }); toast("Re-scored."); await loadAll(); renderAll(); const p = S.props.find((x) => x.id === t.dataset.rescoreProp); if (p) propModal(p); }
+        try { await callFn("ingest", { action: "score", property_id: t.dataset.rescoreProp, reread: !!t.dataset.reread }); toast("Re-scored."); await loadAll(); renderAll(); const p = S.props.find((x) => x.id === t.dataset.rescoreProp); if (p) propModal(p); }
         catch (err) { toast(err.message, 6000); t.disabled = false; t.textContent = "Re-run scoring"; }
       }
       else if (t.dataset.editProp) {

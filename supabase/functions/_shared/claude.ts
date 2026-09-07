@@ -194,7 +194,7 @@ export const EXTRACT_SCHEMA = {
     price_total: nullable("number", "Weekly total in USD if the page states one"),
     summary: { type: "string", description: "The listing's own description, condensed to the facts that matter for a 14-person family: rooms, beds, pools, game room, theater, kitchen, parking, location" },
     amenities: { type: "array", items: { type: "string" } },
-    bed_summary: nullable("string", "Beds per bedroom as the page states them, e.g. '4 king rooms, 2 queen rooms, 1 bunk room (2 queen bunks)'"),
+    bed_summary: nullable("string", "Beds per bedroom as the pages state them, room by room if given, e.g. 'Suite 1: king; Suite 2: king; Bunk room: 2 queen-over-queen bunks'"),
   },
 };
 export type Extracted = { title: string | null; city: string | null; state: string | null; bedrooms: number | null; bathrooms: number | null; sleeps: number | null; price_night: number | null; price_total: number | null; summary: string; amenities: string[]; bed_summary: string | null };
@@ -204,9 +204,9 @@ export async function extractListing(url: string, text: string): Promise<Extract
   if (!text || text.length < 200) return null;
   const params: Record<string, unknown> = {
     model: Deno.env.get("CLAUDE_EXTRACT_MODEL") || "claude-sonnet-5",
-    max_tokens: 2000,
+    max_tokens: 2500,
     system: "You extract facts from vacation-rental web pages. Use only what the page text says. Use null for anything the page does not state. The town must be where the house is, not where the rental company is based; if the page names a resort or community, still give the town.",
-    messages: [{ role: "user", content: `URL: ${url}\n\nPAGE TEXT:\n${text.slice(0, 14000)}` }],
+    messages: [{ role: "user", content: `URL: ${url}\n\nPAGE TEXT (may include several pages of the same site, each marked === PAGE):\n${text.slice(0, 60000)}` }],
     output_config: { effort: "low", format: { type: "json_schema", schema: EXTRACT_SCHEMA } },
   };
   // deno-lint-ignore no-explicit-any

@@ -1,10 +1,29 @@
 import { corsHeaders, json, err } from "../_shared/cors.ts";
 import { adminClient, requireUser } from "../_shared/supa.ts";
-import { scrape, geocode, milesBetween, stateAbbr, detectSource, canonicalUrl } from "../_shared/scrape.ts";
+import { scrape, geocode, milesBetween, stateAbbr, detectSource, canonicalUrl, crawlSite } from "../_shared/scrape.ts";
 import { elevationFt, elevationNote, MAX_ELEVATION_FT } from "../_shared/elevation.ts";
 import { askJson, extractListing, resolvePlace, findListings, FAMILY_CONTEXT, DEST_RUBRIC, PROP_RUBRIC, DEST_SCHEMA, PROP_SCHEMA, sumScores } from "../_shared/claude.ts";
 
 const MATCH_MILES = 45;
+
+/** For a cabin company's own website, read the whole site (rooms, rates, amenities pages) and pull the facts out of all of it. */
+async function enrichFromSite(s: { url: string; source: string; title: string | null; description: string | null; city: string | null; state: string | null; bedrooms: number | null; bathrooms: number | null; sleeps: number | null; text: string; note: string | null; ok: boolean }, force = false) {
+  if (!force && (s.source === "airbnb" || s.source === "vrbo")) return;
+  const crawl = await crawlSite(s.url, 10);
+  if (crawl.pages.length) s.text = crawl.combined;
+  if (!s.text || s.text.length < 200) return;
+  const x = await extractListing(s.url, s.text);
+  if (!x) return;
+  s.title = x.title || s.title; s.city = x.city || s.city; s.state = stateAbbr(x.state) || x.state || s.state;
+  s.bedrooms = x.bedrooms ?? s.bedrooms; s.bathrooms = x.bathrooms ?? s.bathrooms; s.sleeps = x.sleeps ?? s.sleeps;
+  (s as unknown as Record<string, unknown>).price_night = x.price_night; (s as unknown as Record<string, unknown>).price_total = x.price_total;
+  const pagesRead = crawl.pages.map((p) => p.url).join(", ");
+  s.description = [x.summary, x.bed_summary ? "Beds per room (from the site): " + x.bed_summary : "", x.amenities?.length ? "Amenities: " + x.amenities.join(", ") : "", crawl.pages.length > 1 ? `Pages read: ${pagesRead}` : ""].filter(Boolean).join("\n\n");
+  // keep the raw site text too, trimmed, so the scorer can see what the extractor saw
+  s.description += "\n\n--- Site text (excerpt) ---\n" + s.text.slice(0, 9000);
+  s.note = crawl.pages.length > 1 ? `We read ${crawl.pages.length} pages of that site. Please double-check the town, bedrooms and bathrooms before saving.` : "We read this page with a little AI help. Please double-check the town, bedrooms and bathrooms before saving.";
+  s.ok = !!(s.city && s.bedrooms);
+}
 
 /** Elevation is a hard health concern: cap the relevant criterion and make sure the text says why. */
 function applyElevationCap(scores: Record<string, { score: number; why: string }>, key: string, cap: number, elev: number | null) {
@@ -110,6 +129,10 @@ Deno.serve(async (req) => {
       const url = String(body.url || "").trim();
       if (!/^https?:\/\//i.test(url)) return err("Paste a full link that starts with http.");
       const s = await scrape(url);
+      if (s.source !== "airbnb" && s.source !== "vrbo") {
+        try { await enrichFromSite(s); } catch (e) { console.error("site enrich failed", e); }
+        return json({ prefill: { ...s, text: undefined }, source: s.source });
+      }
       const incomplete = !s.city || !s.state || !s.bedrooms || !s.bathrooms || !s.sleeps;
       if (incomplete && s.text && s.text.length > 200) {
         try {
@@ -173,6 +196,21 @@ Deno.serve(async (req) => {
       if (prop.submitted_by !== user.id && !profile?.is_admin && !pendingAi) return err("Only the person who added it can re-score it.", 403);
       if (body.ai_note !== undefined && profile?.is_admin) await admin.from("properties").update({ ai_note: body.ai_note }).eq("id", prop.id);
       const { data: dest } = await admin.from("destinations").select("*").eq("id", prop.destination_id).single();
+      const thin = !prop.description || prop.description.length < 1500 || !prop.bathrooms;
+      if (prop.url && prop.source !== "airbnb" && prop.source !== "vrbo" && (body.reread || thin)) {
+        try {
+          const s = await scrape(prop.url);
+          await enrichFromSite(s, true);
+          const upd: Record<string, unknown> = { description: s.description || prop.description, bedrooms: s.bedrooms ?? prop.bedrooms, bathrooms: s.bathrooms ?? prop.bathrooms, sleeps: s.sleeps ?? prop.sleeps, image_url: prop.image_url || s.image_url };
+          const pn = (s as unknown as Record<string, unknown>).price_night; if (pn && !prop.price_night) upd.price_night = pn;
+          if (s.city && s.state && (s.city.toLowerCase() !== (prop.city || "").toLowerCase())) {
+            const g = await geocode(`${s.city}, ${s.state}`);
+            if (g && milesBetween(g, dest) <= 90) { upd.city = s.city; upd.state = s.state; upd.lat = g.lat + (Math.random() - 0.5) * 0.06; upd.lng = g.lng + (Math.random() - 0.5) * 0.06; upd.elevation_ft = await elevationFt(g.lat, g.lng); }
+          }
+          const { data: fresh } = await admin.from("properties").update(upd).eq("id", prop.id).select("*").single();
+          if (fresh) Object.assign(prop, fresh);
+        } catch (e) { console.error("reread failed", e); }
+      }
       const system = `You are the family's lodging analyst. Score one rental house for a 14-person family reunion using the rubric exactly. Base every score on the listing facts given; when a fact is missing, say so in the why text, score conservatively, and add it to the verify checklist. Never invent amenities.\n${FAMILY_CONTEXT}\n${PROP_RUBRIC}`;
       let elevP = prop.elevation_ft ?? (prop.lat != null ? await elevationFt(prop.lat, prop.lng) : null);
       if (elevP == null) elevP = dest.elevation_ft ?? null;
@@ -244,8 +282,9 @@ Deno.serve(async (req) => {
       const { data: dest } = await admin.from("destinations").select("*").eq("id", body.destination_id).maybeSingle();
       if (!dest) return err("Destination not found", 404);
       const s = await scrape(url);
+      if (s.source !== "airbnb" && s.source !== "vrbo") { try { await enrichFromSite(s); } catch (e) { console.error("site enrich failed", e); } }
       const incomplete = !s.city || !s.bedrooms || !s.bathrooms;
-      if (incomplete && s.text && s.text.length > 200) {
+      if (incomplete && s.text && s.text.length > 200 && (s.source === "airbnb" || s.source === "vrbo")) {
         try {
           const x = await extractListing(s.url, s.text);
           if (x) {

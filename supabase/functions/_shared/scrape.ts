@@ -194,3 +194,46 @@ export function milesBetween(a: { lat: number; lng: number }, b: { lat: number; 
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(toR(a.lat)) * Math.cos(toR(b.lat)) * Math.sin(dLng / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(h));
 }
+
+/** Crawl a small rental site: the given page plus up to `maxPages` same-site pages, preferring ones about rooms, beds, rates and amenities. */
+export async function crawlSite(url: string, maxPages = 10): Promise<{ pages: Array<{ url: string; title: string; text: string }>; combined: string }> {
+  const origin = (() => { try { return new URL(url); } catch { return null; } })();
+  const pages: Array<{ url: string; title: string; text: string }> = [];
+  if (!origin) return { pages, combined: "" };
+  const seen = new Set<string>();
+  const norm = (h: string) => { try { const u = new URL(h, origin); u.hash = ""; u.search = ""; return u.toString().replace(/\/$/, ""); } catch { return ""; } };
+  const isSame = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, "") === origin.hostname.replace(/^www\./, ""); } catch { return false; } };
+  const skip = /\.(jpg|jpeg|png|gif|webp|svg|pdf|css|js|ico|mp4|zip)(\?|$)|mailto:|tel:|\/cart|\/login|\/account|\/checkout|privacy|terms|\/blog\/|\/tag\/|\/category\//i;
+  const score = (u: string, label: string) => { const t = (u + " " + label).toLowerCase(); let n = 0;
+    for (const [re, w] of [[/bed|room|suite|sleep/, 5], [/rate|price|pricing|book|avail/, 4], [/amenit|feature|floor|plan|layout|overview|property|cabin|lodge|house|home|about|detail|gallery|photo/, 3], [/kitchen|pool|game|theater|hot ?tub|parking/, 2], [/contact|location|direction|area|map/, 1]] as Array<[RegExp, number]>) if (re.test(t)) n += w;
+    return n; };
+  const fetchPage = async (u: string) => {
+    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 12000);
+    try {
+      const res = await fetch(u, { headers: { "User-Agent": UA, "Accept-Language": "en-US,en;q=0.9", "Accept": "text/html" }, redirect: "follow", signal: ctrl.signal });
+      clearTimeout(t);
+      if (!res.ok || !/text\/html/i.test(res.headers.get("content-type") || "text/html")) return null;
+      return (await res.text()).slice(0, 2_000_000);
+    } catch { clearTimeout(t); return null; }
+  };
+  const toText = (html: string) => decode(html.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<nav[\s\S]*?<\/nav>/gi, " ").replace(/<footer[\s\S]*?<\/footer>/gi, " ").replace(/<(br|p|div|li|h\d|tr)[^>]*>/gi, "\n").replace(/<[^>]+>/g, " ").replace(/[ \t]+/g, " ").replace(/\n\s*\n+/g, "\n"));
+  const start = norm(url); seen.add(start);
+  const first = await fetchPage(url);
+  if (!first) return { pages, combined: "" };
+  const titleOf = (h: string) => decode((h.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "").trim()).slice(0, 120);
+  pages.push({ url: start, title: titleOf(first), text: toText(first).slice(0, 12000) });
+  // candidate links from the first page, ranked
+  const cands: Array<{ u: string; n: number }> = [];
+  for (const m of first.matchAll(/<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]{0,120}?)<\/a>/gi)) {
+    const u = norm(m[1]); if (!u || seen.has(u) || !isSame(u) || skip.test(u)) continue;
+    seen.add(u); cands.push({ u, n: score(u, m[2].replace(/<[^>]+>/g, " ")) });
+  }
+  cands.sort((a, b) => b.n - a.n);
+  for (const c of cands.slice(0, maxPages - 1)) {
+    const h = await fetchPage(c.u); if (!h) continue;
+    const text = toText(h).slice(0, 9000);
+    if (text.length > 200) pages.push({ url: c.u, title: titleOf(h), text });
+  }
+  const combined = pages.map((p) => `=== PAGE: ${p.url} (${p.title})\n${p.text}`).join("\n\n").slice(0, 60000);
+  return { pages, combined };
+}
