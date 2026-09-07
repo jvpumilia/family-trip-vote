@@ -119,14 +119,14 @@
   let booted = false;
   async function boot() {
     await loadAll();
-    if (!S.profile) { authMsg("Your account has no profile yet. Ask Joseph."); await sb.auth.signOut(); return; }
+    if (!S.profile) { if (S.channel) { sb.removeChannel(S.channel); S.channel = null; } await sb.auth.signOut(); authMsg("That account no longer exists. Create a new one or ask Joseph."); return; }
     $("#auth").hidden = true; $("#app").hidden = false; $("#userchip").hidden = false;
     $("#user-name").textContent = `${S.profile.display_name} · ${S.profile.household}`;
     $("#admin-tab").hidden = !isAdmin();
     if (!booted) { booted = true; wireTabs(); wireForms(); }
     if (!S.channel) {
       let t;
-      const refresh = () => { clearTimeout(t); t = setTimeout(async () => { await loadAll(); renderAll(); }, 400); };
+      const refresh = () => { clearTimeout(t); t = setTimeout(async () => { if (!S.session) return; await loadAll(); renderAll(); }, 400); };
       S.channel = sb.channel("live").on("postgres_changes", { event: "*", schema: "public", table: "properties" }, refresh)
         .on("postgres_changes", { event: "*", schema: "public", table: "destinations" }, refresh)
         .on("postgres_changes", { event: "*", schema: "public", table: "votes" }, refresh).subscribe();
@@ -135,6 +135,7 @@
   }
 
   function renderAll() {
+    if (!S.session || !S.profile) return; // signed out, or an account that no longer exists
     renderMap(); renderDests(); renderLodging(); renderMine(); renderVote(); renderRecs(); renderResults(); if (isAdmin()) renderAdmin();
   }
 
