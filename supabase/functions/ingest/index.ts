@@ -26,6 +26,28 @@ async function enrichFromSite(s: { url: string; source: string; title: string | 
   s.ok = !!(s.city && s.bedrooms);
 }
 
+/** Same listing link, or the same house name in the same destination, already on the list? */
+async function findDuplicate(admin: ReturnType<typeof adminClient>, url: string | null, title: string, destinationId: string | null) {
+  const normT = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  if (url) {
+    const cu = canonicalUrl(url).toLowerCase().replace(/\/$/, "");
+    const { data: byUrl } = await admin.from("properties").select("id,title,url,submitted_by,ai_pick,destination_id").not("url", "is", null);
+    const hit = (byUrl || []).find((r: { url?: string }) => canonicalUrl(r.url || "").toLowerCase().replace(/\/$/, "") === cu);
+    if (hit) return hit;
+  }
+  if (destinationId && title) {
+    const { data: byTitle } = await admin.from("properties").select("id,title,submitted_by,ai_pick,destination_id").eq("destination_id", destinationId);
+    const hit = (byTitle || []).find((r: { title: string }) => normT(r.title) === normT(title));
+    if (hit) return hit;
+  }
+  return null;
+}
+const dupMessage = async (admin: ReturnType<typeof adminClient>, hit: { id: string; title: string; submitted_by: string | null; ai_pick: boolean }) => {
+  let who = hit.ai_pick ? "Claude (AI Selected)" : "someone";
+  if (hit.submitted_by) { const { data: pr } = await admin.from("profiles").select("household").eq("id", hit.submitted_by).maybeSingle(); if (pr?.household) who = `the ${pr.household} household`; }
+  return `"${hit.title}" is already on the list, added by ${who}. Open that one instead; if it's yours, star it or edit it there.`;
+};
+
 /** Elevation is a hard health concern: cap the relevant criterion and make sure the text says why. */
 function applyElevationCap(scores: Record<string, { score: number; why: string }>, key: string, cap: number, elev: number | null) {
   if (elev == null || !scores) return;
@@ -164,7 +186,15 @@ Deno.serve(async (req) => {
       if (!city || !state) return err("Town and state/province are required so we can put it on the map.");
       if (!title) return err("Give the place a name.");
       const url = body.url ? canonicalUrl(String(body.url).trim()) : null;
+      if (!body.as_ai) {
+        const dupByUrl = await findDuplicate(admin, url, "", null);
+        if (dupByUrl) return err(await dupMessage(admin, dupByUrl), 409, { existing_id: dupByUrl.id });
+      }
       const { dest, created, geo } = await resolveDestination(admin, city, state, user.id);
+      if (!body.as_ai) {
+        const dupByTitle = await findDuplicate(admin, null, title, dest.id);
+        if (dupByTitle) return err(await dupMessage(admin, dupByTitle), 409, { existing_id: dupByTitle.id });
+      }
       // jitter property pins slightly so several in one town don't stack
       const jit = () => (Math.random() - 0.5) * 0.06;
       const asAi = !!body.as_ai && !!profile?.is_admin;
@@ -301,6 +331,7 @@ Deno.serve(async (req) => {
         } catch (e) { console.error("extract failed", e); }
       }
       if (!s.title || !s.bedrooms || s.bedrooms < 6) return json({ skipped: `not usable (${s.bedrooms ?? "?"} BR)`, title: s.title });
+      if (await findDuplicate(admin, s.url, s.title, dest.id)) return json({ skipped: "already on the list", title: s.title });
       // the listing has to actually be near this destination (search engines love a same-named town elsewhere)
       let near = { lat: dest.lat, lng: dest.lng };
       if (s.city) {

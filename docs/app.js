@@ -66,7 +66,7 @@
     });
     let data = {};
     try { data = await res.json(); } catch { /* empty */ }
-    if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+    if (!res.ok) { const e = new Error(data.error || `Request failed (${res.status})`); e.data = data; e.status = res.status; throw e; }
     return data;
   }
 
@@ -485,8 +485,9 @@
         setTimeout(() => { sf.hidden = true; pf.hidden = false; pf.reset(); prog.hidden = true; }, 1200);
       } catch (err) {
         step(`<span class="step">Problem: ${esc(err.message)}</span>`);
-        toast(err.message, 6000);
+        toast(err.message, 8000);
         await loadAll(); renderAll();
+        if (err.status === 409 && err.data?.existing_id) { const p = S.props.find((x) => x.id === err.data.existing_id); if (p) propModal(p); }
       }
       btn.disabled = false;
     };
