@@ -203,3 +203,7 @@ details.travel-detail summary{cursor:pointer;color:var(--sea)}
 .strip .cell{height:14px;border-radius:3px;background:#ebe5d8}
 .strip .cell.avail{background:#8fd3a6}.strip .cell.booked{background:#ef9a9a}.strip .cell.part{background:linear-gradient(135deg,#8fd3a6 50%,#ef9a9a 50%)}.strip .cell.trip{outline:2px solid var(--accent);outline-offset:-1px}
 .win-row{display:grid;grid-template-columns:auto 1fr auto;gap:.6em;align-items:center;font-size:.85rem;padding:.3em 0;border-bottom:1px dashed var(--line)}
+
+.gallery{display:flex;gap:6px;overflow-x:auto;padding:4px 0 8px;scrollbar-width:thin}
+.gallery img{height:64px;width:92px;object-fit:cover;border-radius:6px;cursor:pointer;opacity:.75;border:2px solid transparent;flex:0 0 auto}
+.gallery img.on,.gallery img:hover{opacity:1;border-color:var(--accent)}

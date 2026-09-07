@@ -41,7 +41,7 @@ export function canonicalUrl(url: string): string {
 export type Scraped = {
   ok: boolean; source: string; url: string; title: string | null; description: string | null; image_url: string | null;
   city: string | null; state: string | null; bedrooms: number | null; beds: number | null; bathrooms: number | null;
-  sleeps: number | null; rating: number | null; review_count: number | null; property_type: string | null; text: string; note: string | null;
+  sleeps: number | null; rating: number | null; review_count: number | null; property_type: string | null; text: string; note: string | null; photos: string[];
 };
 
 export function detectSource(url: string): string {
@@ -58,7 +58,7 @@ export function detectSource(url: string): string {
 export async function scrape(url: string): Promise<Scraped> {
   const source = detectSource(url);
   url = canonicalUrl(url);
-  const out: Scraped = { ok: false, source, url, title: null, description: null, image_url: null, city: null, state: null, bedrooms: null, beds: null, bathrooms: null, sleeps: null, rating: null, review_count: null, property_type: null, text: "", note: null };
+  const out: Scraped = { ok: false, source, url, photos: [], title: null, description: null, image_url: null, city: null, state: null, bedrooms: null, beds: null, bathrooms: null, sleeps: null, rating: null, review_count: null, property_type: null, text: "", note: null };
   let html = "";
   try {
     const ctrl = new AbortController();
@@ -81,6 +81,7 @@ export async function scrape(url: string): Promise<Scraped> {
     return out;
   }
   const title = (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "").trim();
+  out.photos = collectPhotos(html, source, url);
   const ogTitle = meta(html, "og:title");
   const ogDesc = meta(html, "og:description");
   const desc = meta(html, "description");
@@ -196,10 +197,10 @@ export function milesBetween(a: { lat: number; lng: number }, b: { lat: number; 
 }
 
 /** Crawl a small rental site: the given page plus up to `maxPages` same-site pages, preferring ones about rooms, beds, rates and amenities. */
-export async function crawlSite(url: string, maxPages = 10): Promise<{ pages: Array<{ url: string; title: string; text: string }>; combined: string }> {
+export async function crawlSite(url: string, maxPages = 10): Promise<{ pages: Array<{ url: string; title: string; text: string }>; combined: string; photos: string[] }> {
   const origin = (() => { try { return new URL(url); } catch { return null; } })();
   const pages: Array<{ url: string; title: string; text: string }> = [];
-  if (!origin) return { pages, combined: "" };
+  if (!origin) return { pages, combined: "", photos: [] };
   const seen = new Set<string>();
   const norm = (h: string) => { try { const u = new URL(h, origin); u.hash = ""; u.search = ""; return u.toString().replace(/\/$/, ""); } catch { return ""; } };
   const isSame = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, "") === origin.hostname.replace(/^www\./, ""); } catch { return false; } };
@@ -218,8 +219,10 @@ export async function crawlSite(url: string, maxPages = 10): Promise<{ pages: Ar
   };
   const toText = (html: string) => decode(html.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<nav[\s\S]*?<\/nav>/gi, " ").replace(/<footer[\s\S]*?<\/footer>/gi, " ").replace(/<(br|p|div|li|h\d|tr)[^>]*>/gi, "\n").replace(/<[^>]+>/g, " ").replace(/[ \t]+/g, " ").replace(/\n\s*\n+/g, "\n"));
   const start = norm(url); seen.add(start);
+  const photosAll: string[] = [];
   const first = await fetchPage(url);
-  if (!first) return { pages, combined: "" };
+  if (!first) return { pages, combined: "", photos: [] };
+  photosAll.push(...collectPhotos(first, "other", url));
   const titleOf = (h: string) => decode((h.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "").trim()).slice(0, 120);
   pages.push({ url: start, title: titleOf(first), text: toText(first).slice(0, 12000) });
   // candidate links from the first page, ranked
@@ -231,9 +234,42 @@ export async function crawlSite(url: string, maxPages = 10): Promise<{ pages: Ar
   cands.sort((a, b) => b.n - a.n);
   for (const c of cands.slice(0, maxPages - 1)) {
     const h = await fetchPage(c.u); if (!h) continue;
+    photosAll.push(...collectPhotos(h, "other", c.u));
     const text = toText(h).slice(0, 9000);
     if (text.length > 200) pages.push({ url: c.u, title: titleOf(h), text });
   }
   const combined = pages.map((p) => `=== PAGE: ${p.url} (${p.title})\n${p.text}`).join("\n\n").slice(0, 60000);
-  return { pages, combined };
+  return { pages, combined, photos: uniq(photosAll).slice(0, 20) };
+}
+
+const BAD_IMG = /logo|icon|sprite|avatar|badge|favicon|placeholder|pixel|tracking|\.svg|\.gif|map|flag|payment|visa|mastercard|star|arrow/i;
+function uniq(arr: string[]) { return Array.from(new Set(arr)); }
+/** Listing photos: Airbnb and VRBO image CDNs, or large <img> tags on a cabin company's pages. */
+export function collectPhotos(html: string, source: string, base?: string): string[] {
+  let urls: string[] = [];
+  if (source === "airbnb") {
+    urls = uniq(Array.from(html.matchAll(/"baseUrl":"(https:\/\/a0\.muscache\.com\/im\/pictures\/[^"\\]+)"/g)).map((m) => m[1].replace(/\\u002F/g, "/")))
+      .map((u) => u.replace(/\?.*$/, "") + "?im_w=1200");
+  } else if (source === "vrbo") {
+    urls = uniq(Array.from(html.matchAll(/https:\/\/media\.vrbo\.com\/lodging\/[^"'\s\\)]+?\.(?:jpg|jpeg|webp)/gi)).map((m) => m[0]))
+      .map((u) => u + "?impolicy=resizecrop&rw=1200&ra=fit");
+  } else {
+    const found: Array<{ u: string; w: number }> = [];
+    for (const m of html.matchAll(/<img[^>]+>/gi)) {
+      const tag = m[0];
+      const src = tag.match(/\s(?:data-src|data-image|src)=["']([^"']+)["']/i)?.[1];
+      const srcset = tag.match(/\s(?:data-srcset|srcset)=["']([^"']+)["']/i)?.[1];
+      let u = src || "";
+      if (srcset) { const parts = srcset.split(",").map((x) => x.trim().split(/\s+/)); const best = parts.sort((a, b) => (parseInt(b[1]) || 0) - (parseInt(a[1]) || 0))[0]; if (best?.[0]) u = best[0]; }
+      if (!u || /^data:/.test(u)) continue;
+      try { u = new URL(u, base).toString(); } catch { continue; }
+      if (BAD_IMG.test(u) || !/\.(jpe?g|webp|png)(\?|$)|squarespace-cdn|wixstatic|cloudinary|imgix|cdn/i.test(u)) continue;
+      const w = parseInt(tag.match(/\swidth=["']?(\d+)/i)?.[1] || "0") || parseInt(u.match(/(\d{3,4})w/)?.[1] || "0") || 800;
+      if (w && w < 300) continue;
+      if (/squarespace-cdn/.test(u)) u = u.replace(/\?.*$/, "") + "?format=1500w";
+      found.push({ u, w });
+    }
+    urls = uniq(found.map((f) => f.u));
+  }
+  return urls.slice(0, 16);
 }

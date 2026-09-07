@@ -295,7 +295,7 @@
     const d = destOf(p);
     const pending = p.status !== "scored";
     return `<div class="card prop-card ${isDq(p) ? "dq" : ""}" data-open-prop="${p.id}">
-      <div class="thumb" style="${p.image_url ? `background-image:url('${esc(p.image_url)}')` : ""}"></div>
+      <div class="thumb" style="${(p.photos?.[0] || p.image_url) ? `background-image:url('${esc(p.photos?.[0] || p.image_url)}')` : ""}"></div>
       ${p.is_finalist ? `<span class="star">★ Finalist</span>` : p.ai_pick ? `<span class="star" style="background:#5b3fa8;color:#fff">AI Selected</span>` : aiMatchFor(p) ? `<span class="star" style="background:#1f7a8c;color:#fff">Matches AI Selected</span>` : ""}
       ${pending ? `<i class="pill neutral badge">scoring…</i>` : (p.gate_pass ? `<i class="pill ok badge">Sleeps us right ✓</i>` : `<i class="pill warn badge">Bed plan short ✗</i>`)}
       <div class="body">
@@ -325,7 +325,9 @@
     const mine = !p.ai_pick && (p.submitted_by === S.session.user.id || (householdOf(p.submitted_by) && householdOf(p.submitted_by) === S.profile.household));
     const det = p.details || {};
     const flags = [det.indoor_pool && "Indoor pool", det.outdoor_pool && "Outdoor pool", det.hot_tub && "Hot tub", det.game_room && "Game room", det.theater && "Theater"].filter(Boolean);
-    openModal(`${p.image_url ? `<img class="hero" src="${esc(p.image_url)}" alt="">` : ""}
+    const photos = (p.photos && p.photos.length ? p.photos : (p.image_url ? [p.image_url] : []));
+    openModal(`${photos.length ? `<img class="hero" id="hero-img" src="${esc(photos[0])}" alt="" referrerpolicy="no-referrer">` : ""}
+      ${photos.length > 1 ? `<div class="gallery">${photos.map((u, i) => `<img src="${esc(u)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-hero="${esc(u)}" class="${i === 0 ? "on" : ""}">`).join("")}</div>` : ""}
       <h2>${esc(p.title)}</h2>
       <p class="muted">${esc(d?.name || "")} · ${esc(p.city || "")}, ${esc(p.state || "")}${p.url ? ` · <a href="${esc(p.url)}" target="_blank" rel="noopener">Open the listing ↗</a>` : ""}</p>
       <div class="kv">
@@ -360,11 +362,12 @@
       ${p.notes ? `<div class="section-title">Notes from whoever added it</div><p>${esc(p.notes)}</p>` : ""}
       ${p.description ? `<details class="quiet"><summary>Listing description</summary><p>${esc(p.description)}</p></details>` : ""}
       <details class="quiet"><summary>More</summary>Added ${fmtDate(p.created_at)}${p.submitted_by ? ` by ${esc(nameOf(p.submitted_by))} (${esc(householdOf(p.submitted_by))})` : p.ai_pick ? " by Claude (AI Selected)" : " from the decision packet"}.</details>
-      ${mine || isAdmin() ? `<div class="actions">
-        <button class="btn small" data-rescore-prop="${p.id}">Re-run scoring</button>
-        ${p.url && p.source !== "airbnb" && p.source !== "vrbo" ? `<button class="btn small" data-rescore-prop="${p.id}" data-reread="1">Re-read the whole website &amp; re-score</button>` : ""}
-        <button class="btn small" data-edit-prop="${p.id}">Edit details</button>
-        <button class="btn small danger" data-del-prop="${p.id}">Delete</button></div>` : ""}`);
+      ${mine || isAdmin() || p.ai_pick ? `<div class="actions">
+        ${p.url ? `<button class="btn small" data-photos="${p.id}">${photos.length ? "Refresh photos" : "Get photos from the listing"}</button>` : ""}
+        ${mine || isAdmin() ? `<button class="btn small" data-rescore-prop="${p.id}">Re-run scoring</button>` : ""}
+        ${(mine || isAdmin()) && p.url && p.source !== "airbnb" && p.source !== "vrbo" ? `<button class="btn small" data-rescore-prop="${p.id}" data-reread="1">Re-read the whole website &amp; re-score</button>` : ""}
+        ${mine || isAdmin() ? `<button class="btn small" data-edit-prop="${p.id}">Edit details</button>
+        <button class="btn small danger" data-del-prop="${p.id}">Delete</button>` : ""}</div>` : ""}`);
   }
 
   // ---------- my picks ----------
@@ -407,7 +410,8 @@
       pf.hidden = true; sf.hidden = false;
       const note = $("#prefill-note");
       note.hidden = !pre?.note; note.textContent = pre?.note || "";
-      sf.url.value = pre?.url || "";  // server hands back the cleaned-up link sf.image_url.value = pre?.image_url || ""; sf.description.value = pre?.description || "";
+      sf.url.value = pre?.url || "";  // server hands back the cleaned-up link
+      sf.dataset.photos = JSON.stringify(pre?.photos || []); sf.image_url.value = pre?.image_url || ""; sf.description.value = pre?.description || "";
       sf.rating.value = pre?.rating ?? ""; sf.review_count.value = pre?.review_count ?? "";
       sf.title.value = pre?.title || ""; sf.city.value = pre?.city || ""; sf.state.value = pre?.state || "";
       sf.bedrooms.value = pre?.bedrooms ?? ""; sf.bathrooms.value = pre?.bathrooms ?? ""; sf.sleeps.value = pre?.sleeps ?? "";
@@ -447,7 +451,7 @@
           step(`<span class="step done">Saved</span><span class="step done">Re-scored</span>`);
         } else {
           step(`<span class="step active">Finding it on the map</span>`);
-          const r = await callFn("ingest", { action: "submit", ...f });
+          const r = await callFn("ingest", { action: "submit", ...f, photos: JSON.parse(sf.dataset.photos || "[]") });
           step(`<span class="step done">Placed in ${esc(r.destination.name)}${r.destination_created ? " (new destination, scored just now)" : ""}</span><span class="step active">Scoring the house against the family rubric (30–60 s)</span>`);
           await loadAll(); renderAll();
           await callFn("ingest", { action: "score", property_id: r.property.id });
@@ -479,12 +483,18 @@
 
     // global click delegation
     document.addEventListener("click", async (e) => {
-      const t = e.target.closest("[data-open-dest],[data-open-prop],[data-goto-lodging],[data-star],[data-rescore-prop],[data-edit-prop],[data-del-prop],[data-rescore-dest],[data-del-dest],[data-adopt],[data-avail],[data-del-win]");
+      const t = e.target.closest("[data-open-dest],[data-open-prop],[data-goto-lodging],[data-star],[data-rescore-prop],[data-edit-prop],[data-del-prop],[data-rescore-dest],[data-del-dest],[data-adopt],[data-avail],[data-del-win],[data-photos],[data-hero]");
       if (!t) return;
       if (t.dataset.openDest) { e.preventDefault(); const d = S.dests.find((x) => x.id === t.dataset.openDest); if (d) destModal(d); }
       else if (t.dataset.openProp) { e.preventDefault(); const p = S.props.find((x) => x.id === t.dataset.openProp); if (p) propModal(p); }
       else if (t.dataset.gotoLodging) { S.filter = t.dataset.gotoLodging; renderLodging(); showTab("lodging"); }
       else if (t.dataset.star) { toggleFinalist(t.dataset.star); }
+      else if (t.dataset.hero) { const h = $("#hero-img"); if (h) h.src = t.dataset.hero; $$(".gallery img").forEach((i) => i.classList.toggle("on", i === t)); }
+      else if (t.dataset.photos) {
+        t.disabled = true; t.textContent = "Fetching…";
+        try { const r = await callFn("ingest", { action: "refresh_photos", property_id: t.dataset.photos }); await loadAll(); renderAll(); const p = S.props.find((x) => x.id === t.dataset.photos); if (p) propModal(p); toast(r.photos?.length ? `Got ${r.photos.length} photos.` : "The site didn't give up any usable photos."); }
+        catch (err) { toast(err.message, 6000); t.disabled = false; t.textContent = "Refresh photos"; }
+      }
       else if (t.dataset.delWin) {
         const w = S.avail.find((x) => x.id === t.dataset.delWin);
         const { error } = await sb.from("availability").delete().eq("id", t.dataset.delWin);
