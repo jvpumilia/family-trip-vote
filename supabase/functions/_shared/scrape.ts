@@ -77,17 +77,30 @@ export async function scrape(url: string): Promise<Scraped> {
     const tm = decode(title).match(/ in ([^,]+),\s*([^,]+),\s*United States/);
     if (tm) { out.city = out.city || tm[1].trim(); out.state = stateAbbr(tm[2].trim()); }
     out.title = ogDesc || decode(title).replace(/\s*-\s*[A-Za-z ]+ for Rent in .*$/, "").trim() || null;
-    out.description = desc ? desc.replace(/^[A-Z][a-z]{2} \d{1,2}, \d{4}\s*·\s*/, "") : null;
+    out.description = desc ? desc.replace(/^[A-Z][a-z]{2} \d{1,2}, \d{4}\s*·\s*/, "").replace(/^[^·]{0,40}·\s*/, "") : null;
     out.sleeps = num(/"personCapacity":(\d+)/, html);
     const cityJson = html.match(/"city":"([^"]+)"/)?.[1];
     if (cityJson && !out.city) out.city = cityJson;
     out.review_count = num(/"reviewCount":"?(\d+)/, html) ?? num(/(\d+)\s+reviews?/i, html);
+    // Airbnb embeds the full description, the amenity list and the room-by-room sleeping arrangement in page JSON.
+    const unescapeJson = (t: string) => { try { return JSON.parse('"' + t + '"'); } catch { return t.replace(/\\n/g, "\n").replace(/\\"/g, '"'); } };
+    const lead = (out.description || "").slice(0, 60).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // the same text appears several times (short teaser first); keep the longest
+    const fulls = lead ? Array.from(html.matchAll(new RegExp('"localizedString":"(' + lead.slice(0, 40) + '(?:[^"\\\\]|\\\\.){100,})"', "g"))).map((m) => m[1]) : [];
+    if (fulls.length) out.description = unescapeJson(fulls.sort((a, b) => b.length - a.length)[0]);
+    const amen = Array.from(html.matchAll(/"available":true,"title":"([^"]+)"/g)).map((m) => m[1]);
+    const rooms = Array.from(new Set(Array.from(html.matchAll(/"MediaTourStop","id":"[^"]+","name":"([^"]+)"/g)).map((m) => m[1])));
+    const bedroomStops = rooms.filter((r) => /^bedroom/i.test(r)).length;
+    const extra: string[] = [];
+    if (amen.length) extra.push("Amenities listed: " + Array.from(new Set(amen)).slice(0, 60).join(", "));
+    if (rooms.length) extra.push("Photo tour rooms: " + rooms.join(", ") + (bedroomStops ? ` (${bedroomStops} labelled bedrooms)` : ""));
+    if (extra.length) out.description = (out.description || "") + "\n\n" + extra.join("\n");
     out.ok = !!(out.city && out.bedrooms);
     if (!out.description || out.description.length < 40) out.note = "Airbnb only gave us the headline; paste anything important from the listing into Notes.";
   } else if (source === "vrbo") {
     out.title = (ogTitle || decode(title)).replace(/\s*-\s*Browse Photos.*$/i, "").replace(/\s*\|\s*Vrbo.*$/i, "").trim();
     out.description = ogDesc || desc;
-    const blob = [out.title, out.description, html.slice(0, 200000)].join(" ");
+    const blob = [out.title, out.description].join(" ");
     out.bedrooms = num(/(\d+)\s*(?:BR|bedrooms?)\b/i, blob);
     out.bathrooms = num(/([\d.]+)\s*(?:BA|baths?|bathrooms?)\b/i, blob);
     out.sleeps = num(/sleeps\s*(\d+)/i, blob);
