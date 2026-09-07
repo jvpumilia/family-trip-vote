@@ -242,7 +242,7 @@ export async function crawlSite(url: string, maxPages = 10): Promise<{ pages: Ar
   return { pages, combined, photos: uniq(photosAll).slice(0, 20) };
 }
 
-const BAD_IMG = /logo|icon|sprite|avatar|badge|favicon|placeholder|pixel|tracking|\.svg|\.gif|map|flag|payment|visa|mastercard|star|arrow/i;
+const BAD_IMG = /logo|icon|sprite|avatar|badge|favicon|placeholder|pixel|tracking|\.svg|\.gif|\bmap\b|flag|payment|visa|mastercard|star|arrow|banner|header|footer|brand|award|seal|button|social|facebook|instagram|youtube/i;
 function uniq(arr: string[]) { return Array.from(new Set(arr)); }
 /** Listing photos: Airbnb and VRBO image CDNs, or large <img> tags on a cabin company's pages. */
 export function collectPhotos(html: string, source: string, base?: string): string[] {
@@ -255,8 +255,13 @@ export function collectPhotos(html: string, source: string, base?: string): stri
       .map((u) => u + "?impolicy=resizecrop&rw=1200&ra=fit");
   } else {
     const found: Array<{ u: string; w: number }> = [];
-    for (const m of html.matchAll(/<img[^>]+>/gi)) {
+    // ignore anything inside the site's header/nav/footer (logos, badges) and open-graph images that are logos
+    const body = html.replace(/<header[\s\S]*?<\/header>/gi, " ").replace(/<nav[\s\S]*?<\/nav>/gi, " ").replace(/<footer[\s\S]*?<\/footer>/gi, " ");
+    for (const m of body.matchAll(/<img[^>]+>/gi)) {
       const tag = m[0];
+      const alt = tag.match(/\salt=["']([^"']*)["']/i)?.[1] || "";
+      const cls = tag.match(/\sclass=["']([^"']*)["']/i)?.[1] || "";
+      if (BAD_IMG.test(alt) || BAD_IMG.test(cls)) continue;
       const src = tag.match(/\s(?:data-src|data-image|src)=["']([^"']+)["']/i)?.[1];
       const srcset = tag.match(/\s(?:data-srcset|srcset)=["']([^"']+)["']/i)?.[1];
       let u = src || "";
@@ -265,11 +270,12 @@ export function collectPhotos(html: string, source: string, base?: string): stri
       try { u = new URL(u, base).toString(); } catch { continue; }
       if (BAD_IMG.test(u) || !/\.(jpe?g|webp|png)(\?|$)|squarespace-cdn|wixstatic|cloudinary|imgix|cdn/i.test(u)) continue;
       const w = parseInt(tag.match(/\swidth=["']?(\d+)/i)?.[1] || "0") || parseInt(u.match(/(\d{3,4})w/)?.[1] || "0") || 800;
-      if (w && w < 300) continue;
+      const hgt = parseInt(tag.match(/\sheight=["']?(\d+)/i)?.[1] || "0");
+      if ((w && w < 300) || (hgt && hgt < 200)) continue;
       if (/squarespace-cdn/.test(u)) u = u.replace(/\?.*$/, "") + "?format=1500w";
       found.push({ u, w });
     }
-    urls = uniq(found.map((f) => f.u));
+    urls = uniq(found.sort((a, b) => b.w - a.w).map((f) => f.u));
   }
-  return urls.slice(0, 16);
+  return urls.filter((u) => !BAD_IMG.test(u)).slice(0, 16);
 }
