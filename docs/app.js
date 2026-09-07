@@ -7,7 +7,8 @@
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const money = (n) => n == null || n === "" ? "" : "$" + Number(n).toLocaleString("en-US", { maximumFractionDigits: 0 });
-  const fmtDate = (s) => s ? new Date(s).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
+  // date-only strings ("2027-06-05") are calendar dates, not instants: format them in UTC so they don't slip a day
+  const fmtDate = (s) => s ? (/^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(s + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }) : new Date(s).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })) : "";
   const fmtDateTime = (s) => s ? new Date(s).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
 
   const DEST_CRITERIA = [
@@ -548,9 +549,9 @@
   /** week status from recorded windows: booked (any booked overlap), avail (available covers the whole week), part (mix), or "" */
   function weekStatus(propId, w) {
     const ws = S.avail.filter((x) => x.property_id === propId);
-    const bookedHit = ws.some((x) => x.status === "booked" && overlaps(x.start_date, addDays(new Date(x.end_date + "T00:00:00Z"), 1).toISOString().slice(0, 10), w.start, w.end));
-    const availCover = ws.some((x) => x.status === "available" && x.start_date <= w.start && x.end_date >= addDays(new Date(w.end + "T00:00:00Z"), -1).toISOString().slice(0, 10));
-    const availTouch = ws.some((x) => x.status === "available" && overlaps(x.start_date, addDays(new Date(x.end_date + "T00:00:00Z"), 1).toISOString().slice(0, 10), w.start, w.end));
+    const bookedHit = ws.some((x) => x.status === "booked" && overlaps(x.start_date, x.end_date, w.start, w.end));
+    const availCover = ws.some((x) => x.status === "available" && x.start_date <= w.start && x.end_date >= w.end);
+    const availTouch = ws.some((x) => x.status === "available" && overlaps(x.start_date, x.end_date, w.start, w.end));
     if (bookedHit && availTouch) return "part";
     if (bookedHit) return "booked";
     if (availCover) return "avail";
@@ -577,7 +578,7 @@
       <div class="avail-wrap"><div class="avail-grid" style="grid-template-columns:230px repeat(${weeks.length},minmax(38px,1fr))">
         <div class="hdr"></div>${weeks.map((w) => `<div class="hdr ${isTripWeek(w) ? "trip" : ""}">${weekLabel(w)}</div>`).join("")}
         ${rows.map((p) => `<div class="rowlabel"><a href="#" data-open-prop="${p.id}">${esc(p.title.length > 34 ? p.title.slice(0, 33) + "…" : p.title)}</a><span class="s">${esc(destOf(p)?.name?.split(" / ")[0]?.split(":")[0] || "")} · ${p.total}${p.is_finalist ? " · ★" : ""}${p.ai_pick ? " · AI" : ""}${isDq(p) ? " · disqualified" : ""}</span></div>` +
-          weeks.map((w) => { const st = weekStatus(p.id, w); const notes = S.avail.filter((x) => x.property_id === p.id && overlaps(x.start_date, addDays(new Date(x.end_date + "T00:00:00Z"), 1).toISOString().slice(0, 10), w.start, w.end)).map((x) => `${x.status} ${fmtDate(x.start_date)}–${fmtDate(x.end_date)}${x.note ? ": " + x.note : ""} (${nameOf(x.created_by) || "?"})`).join("\n"); return `<div class="cell ${st} ${isTripWeek(w) ? "trip" : ""} ${isDq(p) ? "dq" : ""}" data-open-prop="${p.id}" title="${esc(weekLabel(w) + (notes ? "\n" + notes : "\nNothing recorded"))}"></div>`; }).join("")).join("")}
+          weeks.map((w) => { const st = weekStatus(p.id, w); const notes = S.avail.filter((x) => x.property_id === p.id && overlaps(x.start_date, x.end_date, w.start, w.end)).map((x) => `${x.status} ${fmtDate(x.start_date)}–${fmtDate(x.end_date)}${x.note ? ": " + x.note : ""} (${nameOf(x.created_by) || "?"})`).join("\n"); return `<div class="cell ${st} ${isTripWeek(w) ? "trip" : ""} ${isDq(p) ? "dq" : ""}" data-open-prop="${p.id}" title="${esc(weekLabel(w) + (notes ? "\n" + notes : "\nNothing recorded"))}"></div>`; }).join("")).join("")}
       </div></div>
       <p class="tiny muted">Hover a square for the details. Click a house name to add what you found on its calendar.</p>`;
   }
@@ -591,8 +592,8 @@
       ${ws.length ? ws.map((x) => `<div class="win-row"><i class="pill ${x.status === "available" ? "ok" : "warn"}">${x.status === "available" ? "open" : "booked"}</i><span>${fmtDate(x.start_date)} – ${fmtDate(x.end_date)}${x.note ? ` · ${esc(x.note)}` : ""} <span class="muted tiny">(${esc(nameOf(x.created_by) || "?")}, ${fmtDate(x.created_at)})</span></span>${x.created_by === S.session.user.id || isAdmin() ? `<button class="btn small ghost" data-del-win="${x.id}">✕</button>` : "<span></span>"}</div>`).join("") : `<p class="tiny muted">No dates recorded yet.</p>`}
       <form class="win-form stack" data-prop="${p.id}" style="margin-top:.6em">
         <div class="row three">
-          <label>From <input type="date" name="start" min="${min}" max="${max}" required></label>
-          <label>To <input type="date" name="end" min="${min}" max="${max}" required></label>
+          <label>Check-in <input type="date" name="start" min="${min}" max="${max}" required></label>
+          <label>Check-out <input type="date" name="end" min="${min}" max="${max}" required></label>
           <label>Status <select name="status"><option value="available">Open</option><option value="booked">Booked</option></select></label>
         </div>
         <div class="row"><input name="note" placeholder="Optional: where you saw it, price, minimum stay…"><button class="btn small primary" type="submit">Add dates</button></div>
@@ -603,7 +604,7 @@
     e.preventDefault();
     const fd = Object.fromEntries(new FormData(f).entries());
     if (!fd.start || !fd.end) return;
-    if (fd.end < fd.start) { toast("The 'to' date is before the 'from' date."); return; }
+    if (fd.end <= fd.start) { toast("Check-out has to be after check-in."); return; }
     const { error } = await sb.from("availability").insert({ property_id: f.dataset.prop, start_date: fd.start, end_date: fd.end, status: fd.status, note: fd.note || null, created_by: S.session.user.id });
     if (error) { toast(error.message, 6000); return; }
     await loadAll(); renderAll();
