@@ -182,7 +182,7 @@
     S.props.forEach((p) => {
       if (p.lat == null) return;
       const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: "", html: `<div class="prop-marker ${p.is_finalist ? "finalist" : ""}" style="width:16px;height:16px"></div>`, iconSize: [16, 16], iconAnchor: [8, 16] }), zIndexOffset: 300 });
-      m.bindPopup(`<b>${esc(p.title)}</b><br>${p.bedrooms ?? "?"} BR · ${p.bathrooms ?? "?"} BA · ${p.status === "scored" ? `<b>${p.total}</b>/100` : "scoring…"}${p.is_finalist ? " · ★ finalist" : ""}<br><a href="#" data-open-prop="${p.id}">Details →</a>`);
+      m.bindPopup(`<b>${esc(p.title)}</b>${p.ai_pick ? " · AI Selected" : ""}<br>${p.bedrooms ?? "?"} BR · ${p.bathrooms ?? "?"} BA · ${p.status === "scored" ? `<b>${p.total}</b>/100` : "scoring…"}${p.is_finalist ? " · ★ finalist" : ""}<br><a href="#" data-open-prop="${p.id}">Details →</a>`);
       m.addTo(props);
     });
     if (S.selectedDest) { const d = S.dests.find((x) => x.id === S.selectedDest.id); if (d) selectDest(d); else { lines.clearLayers(); $("#map-info").innerHTML = ""; } }
@@ -199,7 +199,7 @@
     }).join("") : `<p class="empty">Nothing yet.</p>`;
     const top = S.props.filter((p) => p.status === "scored").sort((a, b) => b.total - a.total).slice(0, 5);
     $("#landing-props").innerHTML = top.length ? top.map((p, i) => `<div class="rank-row"><div class="n">${i + 1}</div>
-        <div><div class="t"><a href="#" data-open-prop="${p.id}">${esc(p.title)}</a>${p.is_finalist ? ' <i class="pill sun">★</i>' : ""}${p.gate_pass ? "" : ' <i class="pill warn">bed plan ✗</i>'}</div>
+        <div><div class="t"><a href="#" data-open-prop="${p.id}">${esc(p.title)}</a>${p.ai_pick ? ' <i class="pill ai">AI Selected</i>' : ""}${p.is_finalist ? ' <i class="pill sun">★</i>' : ""}${p.gate_pass ? "" : ' <i class="pill warn">bed plan ✗</i>'}</div>
         <div class="s">${esc(destOf(p)?.name || p.city || "")} · ${p.bedrooms ?? "?"} BR · ${p.bathrooms ?? "?"} BA${p.price_night ? " · " + money(p.price_night) + "/night" : ""}</div></div>
         <div class="sc">${p.total}<small>/100</small></div></div>`).join("") : `<p class="empty">No houses scored yet. Add one on the My picks tab.</p>`;
   }
@@ -263,7 +263,7 @@
       <div class="section-title">Things to do, rated for our crew</div>
       ${(d.attractions || []).map((a) => `<div class="attr"><div><b>${esc(a.name)}</b> <span class="cat">${esc(a.category)} · ${esc(a.ages)}</span><br><span class="muted">${esc(a.why)}</span></div><div>${stars(a.rating)}</div></div>`).join("") || `<p class="empty">None listed.</p>`}
       <div class="section-title">Lodging added here (${ps.length})</div>
-      ${ps.length ? ps.map((p) => `<div class="attr"><div><b>${esc(p.title)}</b>${p.is_finalist ? ' <i class="pill sun">★ finalist</i>' : ""}<br><span class="muted">${p.bedrooms ?? "?"} BR · ${p.bathrooms ?? "?"} BA · sleeps ${p.sleeps ?? "?"}${p.price_night ? " · " + money(p.price_night) + "/night" : ""}</span></div><div><button class="btn small" data-open-prop="${p.id}">${p.status === "scored" ? p.total + "/100" : "scoring…"}</button></div></div>`).join("") : `<p class="empty">Nobody has added a house here yet. Add one on the My picks tab.</p>`}
+      ${ps.length ? ps.map((p) => `<div class="attr"><div><b>${esc(p.title)}</b>${p.ai_pick ? ' <i class="pill ai">AI Selected</i>' : ""}${p.is_finalist ? ' <i class="pill sun">★ finalist</i>' : ""}<br><span class="muted">${p.bedrooms ?? "?"} BR · ${p.bathrooms ?? "?"} BA · sleeps ${p.sleeps ?? "?"}${p.price_night ? " · " + money(p.price_night) + "/night" : ""}</span></div><div><button class="btn small" data-open-prop="${p.id}">${p.status === "scored" ? p.total + "/100" : "scoring…"}</button></div></div>`).join("") : `<p class="empty">Nobody has added a house here yet. Add one on the My picks tab.</p>`}
       ${isAdmin() ? `<div class="actions"><button class="btn small" data-rescore-dest="${d.id}">Re-run AI scoring</button><button class="btn small danger" data-del-dest="${d.id}">Delete destination</button></div>` : ""}`);
   }
 
@@ -273,7 +273,7 @@
     const pending = p.status !== "scored";
     return `<div class="card prop-card" data-open-prop="${p.id}">
       <div class="thumb" style="${p.image_url ? `background-image:url('${esc(p.image_url)}')` : ""}"></div>
-      ${p.is_finalist ? `<span class="star">★ Finalist</span>` : p.ai_pick ? `<span class="star" style="background:#5b3fa8;color:#fff">AI pick</span>` : aiMatchFor(p) ? `<span class="star" style="background:#1f7a8c;color:#fff">Matches an AI pick</span>` : ""}
+      ${p.is_finalist ? `<span class="star">★ Finalist</span>` : p.ai_pick ? `<span class="star" style="background:#5b3fa8;color:#fff">AI Selected</span>` : aiMatchFor(p) ? `<span class="star" style="background:#1f7a8c;color:#fff">Matches AI Selected</span>` : ""}
       ${pending ? `<i class="pill neutral badge">scoring…</i>` : (p.gate_pass ? `<i class="pill ok badge">Sleeps us right ✓</i>` : `<i class="pill warn badge">Bed plan short ✗</i>`)}
       <div class="body">
         <div class="title">${esc(p.title)}</div>
@@ -322,11 +322,11 @@
         ${(p.red_flags || []).length ? `<div class="section-title">Red flags</div><ul class="list">${p.red_flags.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
         ${(p.verify_checklist || []).length ? `<div class="section-title">Confirm in writing before any deposit</div><ul class="list">${p.verify_checklist.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
       ` : `<p class="msg info">Still being scored. This usually takes under a minute; the page updates by itself.</p>`}
-      ${p.ai_pick ? `<div class="section-title">Why Claude recommends it <i class="pill ai">AI pick</i></div><p>${esc(p.ai_note || "")}</p>${familyMatchesFor(p).length ? `<p class="msg ok">Also picked by ${familyMatchesFor(p).map((m) => esc(householdOf(m.submitted_by))).filter((v, i, a) => a.indexOf(v) === i).join(", ")}.</p>` : ""}<div class="actions"><button class="btn primary small" data-adopt="${p.id}">Adopt as one of my household's houses</button></div>` : ""}
-      ${!p.ai_pick && aiMatchFor(p) ? `<p class="msg ok"><i class="pill match">Matches an AI pick</i> Claude independently recommended this same house. <a href="#" data-open-prop="${aiMatchFor(p).id}">See its note</a>.</p>` : ""}
+      ${p.ai_pick ? `<div class="section-title">Why Claude recommends it <i class="pill ai">AI Selected</i></div><p>${esc(p.ai_note || "")}</p>${familyMatchesFor(p).length ? `<p class="msg ok">Also picked by ${familyMatchesFor(p).map((m) => esc(householdOf(m.submitted_by))).filter((v, i, a) => a.indexOf(v) === i).join(", ")}.</p>` : ""}<div class="actions"><button class="btn primary small" data-adopt="${p.id}">Adopt as one of my household's houses</button></div>` : ""}
+      ${!p.ai_pick && aiMatchFor(p) ? `<p class="msg ok"><i class="pill match">Matches an AI Selected house</i> Claude independently recommended this same house. <a href="#" data-open-prop="${aiMatchFor(p).id}">See its note</a>.</p>` : ""}
       ${p.notes ? `<div class="section-title">Notes from whoever added it</div><p>${esc(p.notes)}</p>` : ""}
       ${p.description ? `<details class="quiet"><summary>Listing description</summary><p>${esc(p.description)}</p></details>` : ""}
-      <details class="quiet"><summary>More</summary>Added ${fmtDate(p.created_at)}${p.submitted_by ? ` by ${esc(nameOf(p.submitted_by))} (${esc(householdOf(p.submitted_by))})` : p.ai_pick ? " by Claude (AI research)" : " from the decision packet"}.</details>
+      <details class="quiet"><summary>More</summary>Added ${fmtDate(p.created_at)}${p.submitted_by ? ` by ${esc(nameOf(p.submitted_by))} (${esc(householdOf(p.submitted_by))})` : p.ai_pick ? " by Claude (AI Selected)" : " from the decision packet"}.</details>
       ${mine || isAdmin() ? `<div class="actions">
         <button class="btn small" data-rescore-prop="${p.id}">Re-run scoring</button>
         <button class="btn small" data-edit-prop="${p.id}">Edit details</button>
@@ -531,7 +531,7 @@
     return `<div class="card rec-card">
       <div class="thumb" style="${p.image_url ? `background-image:url('${esc(p.image_url)}')` : ""}"></div>
       <div>
-        <div class="title-row"><h3>${rank ? `#${rank} ` : ""}<a href="#" data-open-prop="${p.id}">${esc(p.title)}</a></h3><span class="mini-score">${p.status === "scored" ? p.total : "…"}<small>/100</small></span></div>
+        <div class="title-row"><h3>${rank ? `#${rank} ` : ""}<a href="#" data-open-prop="${p.id}">${esc(p.title)}</a> <i class="pill ai">AI Selected</i></h3><span class="mini-score">${p.status === "scored" ? p.total : "…"}<small>/100</small></span></div>
         <div class="muted tiny">${esc(d?.name || "")} · ${p.bedrooms ?? "?"} BR · ${p.bathrooms ?? "?"} BA · sleeps ${p.sleeps ?? "?"}${p.price_night ? " · " + money(p.price_night) + "/night" : ""}${p.rating ? ` · ★ ${p.rating}${p.review_count ? ` (${p.review_count})` : ""}` : ""}
           ${p.gate_pass ? '<i class="pill ok">sleeps us right ✓</i>' : '<i class="pill warn">bed plan short ✗</i>'}
           ${matches.length ? `<i class="pill match">Also picked by ${matches.map((m) => esc(householdOf(m.submitted_by))).filter((v, i, a) => a.indexOf(v) === i).join(", ")}</i>` : ""}</div>
