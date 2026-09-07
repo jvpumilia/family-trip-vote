@@ -8,8 +8,8 @@ THE FAMILY AND THE TRIP
 - 14 people from five households: Southwest Florida (fly RSW or TPA), Gig Harbor WA (fly SEA), Nashville TN (fly BNA), Rockford IL (fly ORD/RFD/MKE), Janesville WI (fly MSN/MKE/ORD).
 - Kids are 11, 8, 4 and 2. Two car seats and a booster travel with them.
 - Seven nights in June 2027, Saturday to Saturday. Must be booked by 30 September 2026.
-- HARD REQUIREMENT, the sleeping plan: seven real, enclosed bedrooms with real beds. Five are COUPLE ROOMS (five couples, each sharing a bed): each needs a king, a queen, or two full beds. Two are KIDS' ROOMS (the Washington family and the Florida family each need a second room for their children): bunk beds are fine there, and two kids sharing one bed need at least a queen. So one or two bunk-bed bedrooms are welcome and count toward the seven. Lofts, open sleeping nooks and pull-out couches do not count as bedrooms. Extra bedrooms beyond seven are margin, not waste.
-- Stated goals, in the family's words: (1) a house that never becomes a point of contention, (2) low travel burden, especially for the Washington family who asked for the fewest connections and car-seat hours, (3) kid activities that work for a toddler AND an eleven-year-old, plus rainy-day options, (4) nature / national-park access.
+- HARD REQUIREMENT, the sleeping plan: seven real, enclosed bedrooms with real beds. Five are COUPLE ROOMS (five couples, each sharing a bed): each needs a king, a queen, or two full beds. Two are KIDS' ROOMS (the two households travelling with the children, Gig Harbor and Southwest Florida, each need a second room): bunk beds are fine there, and two kids sharing one bed need at least a queen. So one or two bunk-bed bedrooms are welcome and count toward the seven. Lofts, open sleeping nooks and pull-out couches do not count as bedrooms. Extra bedrooms beyond seven are margin, not waste.
+- Stated goals, in the family's words: (1) a house that never becomes a point of contention, (2) low travel burden for everyone, weighing the longest trips most (Gig Harbor is farthest and Southwest Florida has fewer nonstops), with as few connections and car-seat hours as possible, (3) kid activities that work for a toddler AND an eleven-year-old, plus rainy-day options, (4) nature / national-park access.
 - Also matters: six or more bathrooms, two refrigerators and two dishwashers, a table that seats 14, parking for three or more cars, on-site kid amenities (pool, game room, theater, playground), overflow lodging within 10 minutes for late-adding relatives, and June heat, crowds and cost.
 `;
 
@@ -17,7 +17,7 @@ export const DEST_RUBRIC = `
 DESTINATION RUBRIC (100 points). Score each criterion as an integer.
 1. lodging (max 25) - GATE: depth of true 7+ bedroom inventory (five couple rooms with king/queen/two fulls plus two kids' rooms, bunks fine, no sofa beds), still bookable for peak June 2027 nine months out. Under 10 = disqualified. 25 = dozens of qualifying homes across several managers; 15-20 = a handful; <10 = one or none.
 2. amenities (max 10) - pool, game room, theater, playground at or beside typical large rentals.
-3. travel (max 20) - 10 points for the Seattle leg (nonstop availability + ground time), 10 points for the other four origins combined.
+3. travel (max 20) - 10 points for the longest leg, Gig Harbor via Seattle (nonstop availability + ground time), 10 points for the other four origins combined. Describe travel neutrally; never frame any household as the complainer.
 4. kids (max 15) - activity range for ages 2 through 11, must work for a toddler AND an 11-year-old, plus rainy-day options.
 5. nature (max 15) - 15 = adjacent to a national park; 8 = strong state park or national forest; 4 = token.
 6. overflow (max 5) - late-adding relatives can book something comparable within 10 minutes.
