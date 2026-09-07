@@ -1,6 +1,6 @@
 import { corsHeaders, json, err } from "../_shared/cors.ts";
 import { adminClient, requireUser } from "../_shared/supa.ts";
-import { scrape, geocode, milesBetween, stateAbbr, detectSource } from "../_shared/scrape.ts";
+import { scrape, geocode, milesBetween, stateAbbr, detectSource, canonicalUrl } from "../_shared/scrape.ts";
 import { askJson, FAMILY_CONTEXT, DEST_RUBRIC, PROP_RUBRIC, DEST_SCHEMA, PROP_SCHEMA, sumScores } from "../_shared/claude.ts";
 
 const MATCH_MILES = 45;
@@ -74,7 +74,7 @@ Deno.serve(async (req) => {
       const title = String(body.title || "").trim();
       if (!city || !state) return err("City and state are required so we can put it on the map.");
       if (!title) return err("Give the place a name.");
-      const url = String(body.url || "").trim() || null;
+      const url = body.url ? canonicalUrl(String(body.url).trim()) : null;
       const { dest, created, geo } = await resolveDestination(admin, city, state, user.id);
       // jitter property pins slightly so several in one town don't stack
       const jit = () => (Math.random() - 0.5) * 0.06;

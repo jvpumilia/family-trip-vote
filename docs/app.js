@@ -338,7 +338,7 @@
       pf.hidden = true; sf.hidden = false;
       const note = $("#prefill-note");
       note.hidden = !pre?.note; note.textContent = pre?.note || "";
-      sf.url.value = pre?.url || ""; sf.image_url.value = pre?.image_url || ""; sf.description.value = pre?.description || "";
+      sf.url.value = pre?.url || "";  // server hands back the cleaned-up link sf.image_url.value = pre?.image_url || ""; sf.description.value = pre?.description || "";
       sf.rating.value = pre?.rating ?? ""; sf.review_count.value = pre?.review_count ?? "";
       sf.title.value = pre?.title || ""; sf.city.value = pre?.city || ""; sf.state.value = pre?.state || "";
       sf.bedrooms.value = pre?.bedrooms ?? ""; sf.bathrooms.value = pre?.bathrooms ?? ""; sf.sleeps.value = pre?.sleeps ?? "";
@@ -354,7 +354,7 @@
       const b = $("#preview-btn"); b.disabled = true; b.textContent = "Reading…";
       try {
         const { prefill } = await callFn("ingest", { action: "preview", url });
-        showSubmit({ ...prefill, url });
+        showSubmit({ ...prefill, url: prefill.url || url });
         if (prefill.ok) toast("Got it. Check the details, add the price, then save.");
       } catch (err) { toast(err.message, 5000); showSubmit({ url, note: "We couldn't read that page. Fill in the details by hand." }); }
       b.disabled = false; b.textContent = "Read the listing";

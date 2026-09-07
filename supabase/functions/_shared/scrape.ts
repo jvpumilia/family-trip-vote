@@ -26,8 +26,20 @@ function num(re: RegExp, text: string): number | null {
   return m ? parseFloat(m[1]) : null;
 }
 
+/** Strip tracking/search parameters: "vrbo.com/444236?chkin=...&semcid=..." -> "https://www.vrbo.com/444236". Long query strings get us rate-limited. */
+export function canonicalUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    const h = u.hostname.toLowerCase();
+    if (h.includes("vrbo") || h.includes("homeaway")) { const m = u.pathname.match(/\/(?:p)?(\d{5,})/); if (m) return `https://www.vrbo.com/${m[1]}`; }
+    if (h.includes("airbnb")) { const m = u.pathname.match(/\/rooms\/(\d+)/); if (m) return `https://www.airbnb.com/rooms/${m[1]}`; }
+    u.hash = "";
+    return u.toString();
+  } catch { return url; }
+}
+
 export type Scraped = {
-  ok: boolean; source: string; title: string | null; description: string | null; image_url: string | null;
+  ok: boolean; source: string; url: string; title: string | null; description: string | null; image_url: string | null;
   city: string | null; state: string | null; bedrooms: number | null; beds: number | null; bathrooms: number | null;
   sleeps: number | null; rating: number | null; review_count: number | null; property_type: string | null; text: string; note: string | null;
 };
@@ -45,14 +57,24 @@ export function detectSource(url: string): string {
 
 export async function scrape(url: string): Promise<Scraped> {
   const source = detectSource(url);
-  const out: Scraped = { ok: false, source, title: null, description: null, image_url: null, city: null, state: null, bedrooms: null, beds: null, bathrooms: null, sleeps: null, rating: null, review_count: null, property_type: null, text: "", note: null };
+  url = canonicalUrl(url);
+  const out: Scraped = { ok: false, source, url, title: null, description: null, image_url: null, city: null, state: null, bedrooms: null, beds: null, bathrooms: null, sleeps: null, rating: null, review_count: null, property_type: null, text: "", note: null };
   let html = "";
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 20000);
-    const res = await fetch(url, { headers: { "User-Agent": UA, "Accept-Language": "en-US,en;q=0.9", "Accept": "text/html,application/xhtml+xml" }, redirect: "follow", signal: ctrl.signal });
+    const headers = { "User-Agent": UA, "Accept-Language": "en-US,en;q=0.9", "Accept": "text/html,application/xhtml+xml" };
+    let res = await fetch(url, { headers, redirect: "follow", signal: ctrl.signal });
+    if (res.status === 429 || res.status === 403) {
+      await new Promise((r) => setTimeout(r, 2500));
+      res = await fetch(url, { headers, redirect: "follow", signal: ctrl.signal });
+    }
     clearTimeout(t);
-    if (!res.ok) { out.note = `The site answered with HTTP ${res.status}; fill the details in by hand.`; return out; }
+    if (!res.ok) {
+      const backup = await readerBackup(url, out);
+      if (!backup) out.note = `The site answered with HTTP ${res.status} (it is blocking robots right now). Fill the details in by hand; the link is still saved.`;
+      return out;
+    }
     html = (await res.text()).slice(0, 3_000_000);
   } catch (e) {
     out.note = `Could not fetch the page (${(e as Error).message}); fill the details in by hand.`;
@@ -104,7 +126,12 @@ export async function scrape(url: string): Promise<Scraped> {
     out.bedrooms = num(/(\d+)\s*(?:BR|bedrooms?)\b/i, blob);
     out.bathrooms = num(/([\d.]+)\s*(?:BA|baths?|bathrooms?)\b/i, blob);
     out.sleeps = num(/sleeps\s*(\d+)/i, blob);
-    out.note = "VRBO hides bedrooms, bathrooms and the exact town from us. Please confirm them below.";
+    const cityFromTitle = (ogTitle || decode(title)).match(/ - ([A-Za-z .'\-]+?)\s*\|\s*Vrbo/i)?.[1];
+    if (cityFromTitle && !/browse photos/i.test(cityFromTitle)) out.city = cityFromTitle.trim();
+    const got = await readerBackup(url, out);
+    out.note = got
+      ? "VRBO numbers were read through a backup reader. Double-check bedrooms, bathrooms and the town before saving."
+      : "VRBO hides bedrooms, bathrooms and the exact town from us. Please confirm them below.";
     out.ok = false;
   } else {
     out.title = ogTitle || decode(title) || null;
@@ -119,6 +146,32 @@ export async function scrape(url: string): Promise<Scraped> {
   const text = html.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
   out.text = decode(text).slice(0, 6000);
   return out;
+}
+
+/** Backup: a free page-to-text reader service renders the page for us. Fills whatever is still blank. */
+async function readerBackup(url: string, out: Scraped): Promise<boolean> {
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 30000);
+    const res = await fetch("https://r.jina.ai/" + url, { headers: { "Accept": "text/plain", "User-Agent": UA }, signal: ctrl.signal });
+    clearTimeout(t);
+    if (!res.ok) return false;
+    const md = (await res.text()).slice(0, 200000);
+    if (md.length < 500) return false;
+    const text = md.replace(/!\[[^\]]*\]\([^)]*\)/g, " ").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/[ \t]+/g, " ");
+    const title = md.match(/^Title:\s*(.+)$/m)?.[1]?.trim();
+    if (title && !out.title) out.title = title.replace(/\s*\|\s*Vrbo.*$/i, "").replace(/\s*-\s*Browse Photos.*$/i, "");
+    out.bedrooms = out.bedrooms ?? num(/(\d+)\s*bedrooms?\b/i, text);
+    out.bathrooms = out.bathrooms ?? num(/([\d.]+)\s*bathrooms?\b/i, text);
+    out.sleeps = out.sleeps ?? num(/sleeps\s*(\d+)/i, text);
+    out.rating = out.rating ?? num(/([\d.]+)\s*out of 10/i, text);
+    out.review_count = out.review_count ?? num(/(\d+)\s*reviews?/i, text);
+    const body = text.split(/Markdown Content:/)[1] || text;
+    const cleaned = body.replace(/\n{2,}/g, "\n").trim();
+    if (!out.description || out.description.length < 200) out.description = cleaned.slice(0, 5000);
+    out.text = out.text || cleaned.slice(0, 6000);
+    return !!(out.bedrooms || out.sleeps);
+  } catch { return false; }
 }
 
 /** Free geocoder (OpenStreetMap Nominatim). One call per submission, so well inside their usage policy. */
