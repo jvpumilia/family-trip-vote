@@ -21,7 +21,7 @@
     ["reviews", "Reviews", 10], ["logistics", "Parking & toddler logistics", 5],
   ];
 
-  const S = { session: null, profile: null, profiles: [], origins: [], dests: [], props: [], votes: [], settings: {}, avail: [], tab: "map", map: null, layers: {}, selectedDest: null, filter: "", sort: "total" };
+  const S = { session: null, profile: null, profiles: [], origins: [], dests: [], props: [], votes: [], settings: {}, avail: [], favs: new Set(), tab: "map", map: null, layers: {}, selectedDest: null, filter: "", sort: "total" };
 
   // ---------- tiny UI helpers ----------
   let toastT;
@@ -39,6 +39,14 @@
   const normUrl = (u) => (u || "").toLowerCase().replace(/^https?:\/\/(www\.)?/, "").replace(/[?#].*$/, "").replace(/\/$/, "");
   const aiPicks = () => S.props.filter((p) => p.ai_pick);
   const isDq = (p) => p.avail_status === "unavailable";
+  const isFav = (p) => S.favs.has(p.id);
+  const favBtn = (p, cls = "") => `<button class="fav ${isFav(p) ? "on" : ""} ${cls}" data-fav="${p.id}" title="${isFav(p) ? "Remove from my favorites" : "Save to my favorites"}" aria-label="favorite">${isFav(p) ? "♥" : "♡"}</button>`;
+  async function toggleFav(id) {
+    if (S.favs.has(id)) { const { error } = await sb.from("favorites").delete().eq("user_id", S.session.user.id).eq("property_id", id); if (error) { toast(error.message, 5000); return; } S.favs.delete(id); }
+    else { const { error } = await sb.from("favorites").insert({ user_id: S.session.user.id, property_id: id }); if (error) { toast(error.message, 5000); return; } S.favs.add(id); }
+    renderAll();
+    const open = $("#modal").hidden ? null : S.props.find((x) => x.id === id); if (open && $("#modal-body").innerHTML.includes(`data-fav="${id}"`)) { const b = $(`#modal-body [data-fav="${id}"]`); if (b) { b.classList.toggle("on", S.favs.has(id)); b.textContent = S.favs.has(id) ? "♥" : "♡"; } }
+  }
   const maxElev = () => S.settings.trip?.max_elevation_ft ?? 5000;
   const elevPill = (ft) => ft == null ? "" : ft > maxElev() ? `<i class="pill warn" title="Above the family's ${maxElev().toLocaleString()} ft health limit">⛰ ${ft.toLocaleString()} ft: too high</i>` : ft > maxElev() - 1000 ? `<i class="pill sun" title="Borderline for the ${maxElev().toLocaleString()} ft limit">⛰ ${ft.toLocaleString()} ft</i>` : `<i class="pill neutral">⛰ ${ft.toLocaleString()} ft</i>`;
   const tripWeek = () => { const t = S.settings.trip || {}; return t.check_in && t.check_out ? `${fmtDate(t.check_in)} to ${fmtDate(t.check_out)}` : "our June 2027 week (dates not set yet)"; };
@@ -113,7 +121,7 @@
 
   // ---------- data ----------
   async function loadAll() {
-    const [pr, o, d, p, v, st, av] = await Promise.all([
+    const [pr, o, d, p, v, st, av, fv] = await Promise.all([
       sb.from("profiles").select("*"),
       sb.from("origins").select("*").order("sort"),
       sb.from("destinations").select("*"),
@@ -121,8 +129,10 @@
       sb.from("votes").select("*"),
       sb.from("settings").select("*"),
       sb.from("availability").select("*").order("start_date"),
+      sb.from("favorites").select("property_id"),
     ]);
     S.avail = av.data || [];
+    S.favs = new Set((fv.data || []).map((r) => r.property_id));
     S.profiles = pr.data || []; S.origins = o.data || []; S.dests = d.data || []; S.props = p.data || []; S.votes = v.data || [];
     S.settings = Object.fromEntries((st.data || []).map((r) => [r.key, r.value]));
     S.profile = S.profiles.find((x) => x.id === S.session.user.id) || null;
@@ -316,6 +326,7 @@
     const pending = p.status !== "scored";
     return `<div class="card prop-card ${isDq(p) ? "dq" : ""}" data-open-prop="${p.id}">
       <div class="thumb" style="${(p.photos?.[0] || p.image_url) ? `background-image:url('${esc(p.photos?.[0] || p.image_url)}')` : ""}"></div>
+      ${favBtn(p, "card-fav")}
       ${p.is_finalist ? `<span class="star">★ Finalist</span>` : p.ai_pick ? `<span class="star" style="background:#5b3fa8;color:#fff">AI Selected</span>` : aiMatchFor(p) ? `<span class="star" style="background:#1f7a8c;color:#fff">Matches AI Selected</span>` : ""}
       ${pending ? `<i class="pill neutral badge">scoring…</i>` : (p.gate_pass ? `<i class="pill ok badge">Sleeps us right ✓</i>` : `<i class="pill warn badge">Bed plan short ✗</i>`)}
       <div class="body">
@@ -334,11 +345,14 @@
     sel.innerHTML = `<option value="">All destinations</option>` + S.dests.map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join("");
     sel.value = S.filter || cur || "";
     let list = S.props.filter((p) => !S.filter || p.destination_id === S.filter);
+    if ($("#lodging-favs").checked) list = list.filter(isFav);
+    $("#lodging-favs-count").textContent = S.favs.size ? `(${S.favs.size})` : "";
     const sort = $("#lodging-sort").value;
     list = list.slice().sort((a, b) => (isDq(a) - isDq(b)) || (sort === "price" ? (a.price_night || 1e9) - (b.price_night || 1e9) : sort === "bedrooms" ? (b.bedrooms || 0) - (a.bedrooms || 0) : sort === "newest" ? new Date(b.created_at) - new Date(a.created_at) : b.total - a.total));
-    $("#lodging-list").innerHTML = list.length ? list.map((p) => propCard(p)).join("") : `<p class="empty">No houses yet. Be the first: paste a link on the My picks tab.</p>`;
+    $("#lodging-list").innerHTML = list.length ? list.map((p) => propCard(p)).join("") : ($("#lodging-favs").checked ? `<p class="empty">No favorites yet. Tap the ♡ on any house to save it here.</p>` : `<p class="empty">No houses yet. Be the first: paste a link on the My picks tab.</p>`);
   }
   $("#lodging-filter").onchange = (e) => { S.filter = e.target.value; renderLodging(); };
+  $("#lodging-favs").onchange = renderLodging;
   $("#lodging-sort").onchange = renderLodging;
 
   function propModal(p) {
@@ -349,7 +363,7 @@
     const photos = (p.photos && p.photos.length ? p.photos : (p.image_url ? [p.image_url] : []));
     openModal(`${photos.length ? `<img class="hero" id="hero-img" src="${esc(photos[0])}" alt="" referrerpolicy="no-referrer">` : ""}
       ${photos.length > 1 ? `<div class="gallery">${photos.map((u, i) => `<img src="${esc(u)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-hero="${esc(u)}" class="${i === 0 ? "on" : ""}">`).join("")}</div>` : ""}
-      <h2>${esc(p.title)}</h2>
+      <h2>${esc(p.title)} ${favBtn(p, "inline")}</h2>
       <p class="muted">${esc(d?.name || "")} · ${esc(p.city || "")}, ${esc(p.state || "")}${p.url ? ` · <a href="${esc(p.url)}" target="_blank" rel="noopener">Open the listing ↗</a>` : ""}</p>
       ${highlightsFor(p).length ? `<div class="section-title" style="margin-top:.4em">Highlights</div>${highlightsHtml(p)}` : ""}
       <div class="kv">
@@ -405,7 +419,7 @@
     $("#mine-list").innerHTML = mine.length ? mine.map((p) => `<div class="card mine-item">
       <div><div class="title" style="font-weight:600"><a href="#" data-open-prop="${p.id}">${esc(p.title)}</a></div>
       <div class="meta muted tiny">${esc(destOf(p)?.name || p.city)} · ${p.bedrooms ?? "?"} BR · ${p.status === "scored" ? p.total + "/100" : "scoring…"} ${p.status === "scored" && !p.gate_pass ? '· <i class="pill warn">bed plan ✗</i>' : ""} ${availBadge(p, true)} · added by ${esc(nameOf(p.submitted_by))}</div></div>
-      <div class="actions"><button class="star-btn ${p.is_finalist ? "on" : ""}" data-star="${p.id}" ${p.status !== "scored" || nominationsLocked() ? "disabled" : ""}>${p.is_finalist ? "★ Finalist" : "☆ Make finalist"}</button></div>
+      <div class="actions">${favBtn(p, "inline")}<button class="star-btn ${p.is_finalist ? "on" : ""}" data-star="${p.id}" ${p.status !== "scored" || nominationsLocked() ? "disabled" : ""}>${p.is_finalist ? "★ Finalist" : "☆ Make finalist"}</button></div>
     </div>`).join("") : `<p class="empty">Your household hasn't added a house yet.</p>`;
   }
 
@@ -506,12 +520,13 @@
 
     // global click delegation
     document.addEventListener("click", async (e) => {
-      const t = e.target.closest("[data-open-dest],[data-open-prop],[data-goto-lodging],[data-star],[data-rescore-prop],[data-edit-prop],[data-del-prop],[data-rescore-dest],[data-del-dest],[data-adopt],[data-avail],[data-del-win],[data-photos],[data-hero]");
+      const t = e.target.closest("[data-open-dest],[data-open-prop],[data-goto-lodging],[data-star],[data-rescore-prop],[data-edit-prop],[data-del-prop],[data-rescore-dest],[data-del-dest],[data-adopt],[data-avail],[data-del-win],[data-photos],[data-hero],[data-fav]");
       if (!t) return;
       if (t.dataset.openDest) { e.preventDefault(); const d = S.dests.find((x) => x.id === t.dataset.openDest); if (d) destModal(d); }
       else if (t.dataset.openProp) { e.preventDefault(); const p = S.props.find((x) => x.id === t.dataset.openProp); if (p) propModal(p); }
       else if (t.dataset.gotoLodging) { S.filter = t.dataset.gotoLodging; renderLodging(); showTab("lodging"); }
       else if (t.dataset.star) { toggleFinalist(t.dataset.star); }
+      else if (t.dataset.fav) { e.preventDefault(); e.stopPropagation(); toggleFav(t.dataset.fav); }
       else if (t.dataset.hero) { const h = $("#hero-img"); if (h) h.src = t.dataset.hero; $$(".gallery img").forEach((i) => i.classList.toggle("on", i === t)); }
       else if (t.dataset.photos) {
         t.disabled = true; t.textContent = "Fetching…";
@@ -605,6 +620,7 @@
     const weeks = seasonWeeks();
     let rows = S.props.filter((p) => p.status === "scored" && (!cur || p.destination_id === cur));
     if (onlyKnown) rows = rows.filter((p) => S.avail.some((a) => a.property_id === p.id) || p.avail_status !== "unknown");
+    if ($("#avail-favs").checked) rows = rows.filter(isFav);
     rows.sort((a, b) => (isDq(a) - isDq(b)) || (b.is_finalist - a.is_finalist) || (b.total - a.total));
     if (!rows.length) { area.innerHTML = `<p class="empty">Nothing to show yet.</p>`; return; }
     const t = S.settings.trip || {};
@@ -618,6 +634,7 @@
   }
   $("#avail-filter").onchange = renderAvail;
   $("#avail-only-known").onchange = renderAvail;
+  $("#avail-favs").onchange = renderAvail;
   function availSection(p) {
     const t = S.settings.trip || {};
     const ws = S.avail.filter((x) => x.property_id === p.id);
@@ -724,7 +741,7 @@
     return `<div class="card rec-card ${isDq(p) ? "dq" : ""}">
       <div class="thumb" style="${p.image_url ? `background-image:url('${esc(p.image_url)}')` : ""}"></div>
       <div>
-        <div class="title-row"><h3>${rank ? `#${rank} ` : ""}<a href="#" data-open-prop="${p.id}">${esc(p.title)}</a> <i class="pill ai">AI Selected</i></h3><span class="mini-score">${p.status === "scored" ? p.total : "…"}<small>/100</small></span></div>
+        <div class="title-row"><h3>${rank ? `#${rank} ` : ""}<a href="#" data-open-prop="${p.id}">${esc(p.title)}</a> <i class="pill ai">AI Selected</i> ${favBtn(p, "inline")}</h3><span class="mini-score">${p.status === "scored" ? p.total : "…"}<small>/100</small></span></div>
         <div class="muted tiny">${esc(d?.name || "")} · ${p.bedrooms ?? "?"} BR · ${p.bathrooms ?? "?"} BA · sleeps ${p.sleeps ?? "?"}${p.price_night ? " · " + money(p.price_night) + "/night" : ""}${p.rating ? ` · ★ ${p.rating}${p.review_count ? ` (${p.review_count})` : ""}` : ""}
           ${p.gate_pass ? '<i class="pill ok">sleeps us right ✓</i>' : '<i class="pill warn">bed plan short ✗</i>'} ${availBadge(p, true)} ${p.elevation_ft > maxElev() ? elevPill(p.elevation_ft) : ""}
           ${matches.length ? `<i class="pill match">Also picked by ${matches.map((m) => esc(householdOf(m.submitted_by))).filter((v, i, a) => a.indexOf(v) === i).join(", ")}</i>` : ""}</div>

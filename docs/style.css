@@ -211,3 +211,9 @@ details.travel-detail summary{cursor:pointer;color:var(--sea)}
 .chips{display:flex;flex-wrap:wrap;gap:.35em;margin:.3em 0 .5em}
 .chip{display:inline-block;background:#eef3f6;border:1px solid #d9e3ea;color:var(--ink);border-radius:999px;padding:.18em .6em;font-size:.78rem;font-weight:500;white-space:nowrap}
 .prop-card .chips{margin:.2em 0 0}.prop-card .chip{font-size:.72rem;padding:.12em .5em}
+
+.fav{border:0;background:rgba(255,255,255,.92);color:#b8542a;border-radius:999px;width:34px;height:34px;font-size:1.25rem;line-height:1;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.2)}
+.fav.on{background:#b8542a;color:#fff}
+.fav.card-fav{position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:2}
+.fav.inline{width:30px;height:30px;font-size:1.1rem;box-shadow:none;background:transparent;vertical-align:middle}
+.fav.inline.on{background:transparent;color:#b8542a}
