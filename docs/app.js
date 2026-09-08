@@ -532,7 +532,7 @@
       const note = $("#prefill-note");
       note.hidden = !pre?.note; note.textContent = pre?.note || "";
       sf.url.value = pre?.url || "";  // server hands back the cleaned-up link
-      sf.dataset.photos = JSON.stringify(pre?.photos || []); sf.image_url.value = pre?.image_url || ""; sf.description.value = pre?.description || "";
+      sf.dataset.prefillPhotos = JSON.stringify(pre?.photos || []); sf.image_url.value = pre?.image_url || ""; sf.description.value = pre?.description || "";
       sf.rating.value = pre?.rating ?? ""; sf.review_count.value = pre?.review_count ?? "";
       sf.title.value = pre?.title || ""; sf.city.value = pre?.city || ""; sf.state.value = pre?.state || "";
       sf.bedrooms.value = pre?.bedrooms ?? ""; sf.bathrooms.value = pre?.bathrooms ?? ""; sf.sleeps.value = pre?.sleeps ?? "";
@@ -572,7 +572,7 @@
           step(`<span class="step done">Saved</span><span class="step done">Re-scored</span>`);
         } else {
           step(`<span class="step active">Finding it on the map</span>`);
-          const r = await callFn("ingest", { action: "submit", ...f, photos: JSON.parse(sf.dataset.photos || "[]") });
+          const r = await callFn("ingest", { action: "submit", ...f, photos: JSON.parse(sf.dataset.prefillPhotos || "[]") });
           step(`<span class="step done">Placed in ${esc(r.destination.name)}${r.destination_created ? " (new destination, scored just now)" : ""}</span><span class="step active">Scoring the house against the family rubric (30–60 s)</span>`);
           await loadAll(); renderAll();
           await callFn("ingest", { action: "score", property_id: r.property.id });
@@ -606,7 +606,7 @@
     // global click delegation
     document.addEventListener("click", async (e) => {
       const t = e.target.closest("[data-open-dest],[data-open-prop],[data-goto-lodging],[data-star],[data-rescore-prop],[data-edit-prop],[data-del-prop],[data-rescore-dest],[data-del-dest],[data-adopt],[data-avail],[data-del-win],[data-photos],[data-hero],[data-fav]");
-      if (!t) return;
+      if (!t || t.tagName === "FORM" || t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT") return;
       if (t.dataset.openDest) { e.preventDefault(); const d = S.dests.find((x) => x.id === t.dataset.openDest); if (d) destModal(d); }
       else if (t.dataset.openProp) { e.preventDefault(); const p = S.props.find((x) => x.id === t.dataset.openProp); if (p) propModal(p); }
       else if (t.dataset.gotoLodging) { S.filter = t.dataset.gotoLodging; renderLodging(); showTab("lodging"); }

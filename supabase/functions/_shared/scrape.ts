@@ -70,12 +70,19 @@ export async function scrape(url: string): Promise<Scraped> {
       res = await fetch(url, { headers, redirect: "follow", signal: ctrl.signal });
     }
     clearTimeout(t);
+    const blocked = (h: string) => /<title>\s*(Just a moment|Attention Required|Access denied|Please verify you are a human|Checking your browser)/i.test(h) || /cf-challenge|challenge-platform|_cf_chl_opt|captcha/i.test(h.slice(0, 20000));
     if (!res.ok) {
       const backup = await readerBackup(url, out);
-      if (!backup) out.note = `The site answered with HTTP ${res.status} (it is blocking robots right now). Fill the details in by hand; the link is still saved.`;
+      if (!backup) out.note = `The site answered with HTTP ${res.status} (it is blocking automated readers). Fill the details in by hand; the link is still saved.`;
       return out;
     }
     html = (await res.text()).slice(0, 3_000_000);
+    if (blocked(html)) {
+      html = "";
+      const backup = await readerBackup(url, out);
+      if (!backup) out.note = "That site puts up a bot check that blocks automated readers, so we couldn't read it. Fill the details in by hand; the link is still saved.";
+      return out;
+    }
   } catch (e) {
     out.note = `Could not fetch the page (${(e as Error).message}); fill the details in by hand.`;
     return out;
@@ -165,6 +172,7 @@ async function readerBackup(url: string, out: Scraped): Promise<boolean> {
     if (md.length < 500) return false;
     const text = md.replace(/!\[[^\]]*\]\([^)]*\)/g, " ").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/[ \t]+/g, " ");
     const title = md.match(/^Title:\s*(.+)$/m)?.[1]?.trim();
+    if (title && /just a moment|attention required|access denied/i.test(title)) return false;
     if (title && !out.title) out.title = title.replace(/\s*\|\s*Vrbo.*$/i, "").replace(/\s*-\s*Browse Photos.*$/i, "");
     out.bedrooms = out.bedrooms ?? num(/(\d+)\s*bedrooms?\b/i, text);
     out.bathrooms = out.bathrooms ?? num(/([\d.]+)\s*bathrooms?\b/i, text);
@@ -214,7 +222,9 @@ export async function crawlSite(url: string, maxPages = 10): Promise<{ pages: Ar
       const res = await fetch(u, { headers: { "User-Agent": UA, "Accept-Language": "en-US,en;q=0.9", "Accept": "text/html" }, redirect: "follow", signal: ctrl.signal });
       clearTimeout(t);
       if (!res.ok || !/text\/html/i.test(res.headers.get("content-type") || "text/html")) return null;
-      return (await res.text()).slice(0, 2_000_000);
+      const h = (await res.text()).slice(0, 2_000_000);
+      if (/<title>\s*(Just a moment|Attention Required|Access denied)/i.test(h)) return null;
+      return h;
     } catch { clearTimeout(t); return null; }
   };
   const toText = (html: string) => decode(html.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<nav[\s\S]*?<\/nav>/gi, " ").replace(/<footer[\s\S]*?<\/footer>/gi, " ").replace(/<(br|p|div|li|h\d|tr)[^>]*>/gi, "\n").replace(/<[^>]+>/g, " ").replace(/[ \t]+/g, " ").replace(/\n\s*\n+/g, "\n"));
