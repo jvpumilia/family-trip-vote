@@ -254,3 +254,13 @@ html,body{overflow-x:hidden;max-width:100%}
   .modal{padding:12px 6px}.modal-card{padding:16px 12px}
   .rank-item{grid-template-columns:28px 1fr auto}
 }
+
+.filterbar{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px;margin-top:8px;display:flex;flex-direction:column;gap:.5em}
+.fgroup{display:grid;grid-template-columns:86px 1fr;gap:.5em;align-items:start}
+.flabel{font-size:.78rem;font-weight:600;color:var(--muted);padding-top:.35em}
+.chip.fchip{cursor:pointer;border:1px solid #d9e3ea;background:#fff;font:inherit;font-size:.8rem}
+.chip.fchip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.fnums{display:flex;flex-wrap:wrap;gap:.6em}
+.fnums label{font-size:.78rem;font-weight:500;width:120px}
+.fnums input{padding:.35em .5em}
+@media (max-width:600px){.fgroup{grid-template-columns:1fr}.flabel{padding-top:0}}

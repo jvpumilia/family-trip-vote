@@ -160,7 +160,7 @@
     $("#auth").hidden = true; $("#app").hidden = false; $("#userchip").hidden = false;
     $("#user-name").textContent = `${S.profile.display_name} · ${S.profile.household}`;
     $("#admin-tab").hidden = !isAdmin();
-    if (!booted) { booted = true; wireTabs(); wireForms(); }
+    if (!booted) { booted = true; wireTabs(); wireForms(); syncFilterUI(); }
     if (!S.channel) {
       let t;
       const refresh = () => { clearTimeout(t); t = setTimeout(async () => { if (!S.session) return; await loadAll(); renderAll(); }, 400); };
@@ -340,6 +340,57 @@
   const chip = (h) => { const ic = (HL_ICONS.find(([re]) => re.test(h)) || [null, "✓"])[1]; return `<span class="chip">${ic} ${esc(h)}</span>`; };
   const highlightsHtml = (p, max) => { const hl = highlightsFor(p); return hl.length ? `<div class="chips">${hl.slice(0, max || 12).map(chip).join("")}</div>` : ""; };
 
+  // ---------- lodging filters ----------
+  const LF_DEFAULT = { am: [], f: [], minbr: "", minba: "", maxprice: "", minscore: "" };
+  let LF = { ...LF_DEFAULT };
+  try { LF = { ...LF_DEFAULT, ...JSON.parse(localStorage.getItem("ftv_lf") || "{}") }; } catch { /* ignore */ }
+  const AM_TEST = {
+    indoor_pool: (p, hl, det) => det.indoor_pool || /indoor.*pool|pool.*indoor|swim spa/i.test(hl),
+    pool: (p, hl, det) => det.indoor_pool || det.outdoor_pool || /\bpool\b(?! table)|swim spa|water park/i.test(hl),
+    hot_tub: (p, hl, det) => det.hot_tub || /hot ?tub|jacuzzi|spillover spa/i.test(hl),
+    game_room: (p, hl, det) => det.game_room || /game ?room|arcade|pool table|billiard/i.test(hl),
+    theater: (p, hl, det) => det.theater || /theater|theatre|cinema|movie/i.test(hl),
+    two_kitchens: (p, hl, det) => /2 kitchens|two kitchens|second kitchen|chef'?s kitchens/i.test(hl + " " + (det.kitchen_notes || "")),
+    water: (p, hl) => /lake|river|beach|ocean|waterfront|water ?park/i.test(hl),
+    crib: (p, hl, det) => /crib|pack.?n.?play|high ?chair/i.test(hl + " " + (det.toddler_notes || "")),
+    fenced: (p, hl) => /fenced/i.test(hl),
+    pets: (p, hl) => /pet friendly|pets allowed|dog friendly/i.test(hl),
+  };
+  function passesFilters(p) {
+    const det = p.details || {};
+    const hl = highlightsFor(p).join(" | ") + " | " + (p.description || "").slice(0, 3000);
+    for (const a of LF.am) { const t = AM_TEST[a]; if (t && !t(p, hl, det)) return false; }
+    for (const f of LF.f) {
+      if (f === "gate" && !p.gate_pass) return false;
+      if (f === "elev" && p.elevation_ft != null && p.elevation_ft > maxElev()) return false;
+      if (f === "avail" && p.avail_status !== "available") return false;
+      if (f === "hidedq" && isDq(p)) return false;
+      if (f === "ballot" && !p.is_finalist) return false;
+      if (f === "ai" && !p.ai_pick) return false;
+      if (f === "family" && p.ai_pick) return false;
+      if (f === "reviews" && !(p.review_count > 0 || p.rating > 0)) return false;
+    }
+    if (LF.minbr && !((p.bedrooms || 0) >= Number(LF.minbr))) return false;
+    if (LF.minba && !((p.bathrooms || 0) >= Number(LF.minba))) return false;
+    if (LF.maxprice && p.price_night && p.price_night > Number(LF.maxprice)) return false;
+    if (LF.minscore && !((p.total || 0) >= Number(LF.minscore))) return false;
+    return true;
+  }
+  function saveLF() { try { localStorage.setItem("ftv_lf", JSON.stringify(LF)); } catch { /* ignore */ } }
+  function syncFilterUI() {
+    $$("#lf-amenities .fchip").forEach((b) => b.classList.toggle("on", LF.am.includes(b.dataset.am)));
+    $$("[data-f].fchip").forEach((b) => b.classList.toggle("on", LF.f.includes(b.dataset.f)));
+    $("#lf-minbr").value = LF.minbr; $("#lf-minba").value = LF.minba; $("#lf-maxprice").value = LF.maxprice; $("#lf-minscore").value = LF.minscore;
+    const active = LF.am.length + LF.f.length + ["minbr", "minba", "maxprice", "minscore"].filter((k) => LF[k]).length;
+    $("#lodging-more").textContent = active ? `Filters (${active}) ▾` : "More filters ▾";
+    if (active) $("#lodging-filterbar").hidden = false;
+  }
+  $("#lodging-more").onclick = () => { const bar = $("#lodging-filterbar"); bar.hidden = !bar.hidden; };
+  $$("#lf-amenities .fchip").forEach((b) => b.onclick = () => { const k = b.dataset.am; LF.am = LF.am.includes(k) ? LF.am.filter((x) => x !== k) : [...LF.am, k]; saveLF(); syncFilterUI(); renderLodging(); });
+  $$("[data-f].fchip").forEach((b) => b.onclick = () => { const k = b.dataset.f; LF.f = LF.f.includes(k) ? LF.f.filter((x) => x !== k) : [...LF.f, k]; saveLF(); syncFilterUI(); renderLodging(); });
+  ["minbr", "minba", "maxprice", "minscore"].forEach((k) => { $("#lf-" + k).oninput = (e) => { LF[k] = e.target.value; saveLF(); syncFilterUI(); renderLodging(); }; });
+  $("#lf-clear").onclick = () => { LF = { ...LF_DEFAULT }; saveLF(); syncFilterUI(); renderLodging(); };
+
   // ---------- lodging ----------
   function propCard(p, mine) {
     const d = destOf(p);
@@ -368,12 +419,16 @@
     let list = S.props.filter((p) => !S.filter || p.destination_id === S.filter);
     if ($("#lodging-favs").checked) list = list.filter(isFav);
     if ($("#lodging-new").checked) list = list.filter(isNew);
+    const beforeAdv = list.length;
+    list = list.filter(passesFilters);
+    $("#lodging-count").textContent = `Showing ${list.length} of ${S.props.length} houses`;
     $("#lodging-new-count").textContent = newCount() ? `(${newCount()})` : "";
     const tab = $('[data-tab="lodging"]'); if (tab) tab.innerHTML = newCount() ? `Lodging <span class="tabdot">${newCount()}</span>` : "Lodging";
     $("#lodging-favs-count").textContent = S.favs.size ? `(${S.favs.size})` : "";
     const sort = $("#lodging-sort").value;
     list = list.slice().sort((a, b) => (isDq(a) - isDq(b)) || (sort === "price" ? (a.price_night || 1e9) - (b.price_night || 1e9) : sort === "bedrooms" ? (b.bedrooms || 0) - (a.bedrooms || 0) : sort === "newest" ? new Date(b.created_at) - new Date(a.created_at) : b.total - a.total));
-    $("#lodging-list").innerHTML = list.length ? list.map((p) => propCard(p)).join("") : ($("#lodging-favs").checked ? `<p class="empty">No favorites yet. Tap the ♡ on any house to save it here.</p>` : `<p class="empty">No houses yet. Be the first: paste a link on the My picks tab.</p>`);
+    $("#lodging-list").innerHTML = list.length ? list.map((p) => propCard(p)).join("") : ($("#lodging-favs").checked ? `<p class="empty">No favorites yet. Tap the ♡ on any house to save it here.</p>` : beforeAdv && !list.length ? `<p class="empty">No house matches those filters. <a href="#" id="lf-clear2">Clear filters</a></p>` : `<p class="empty">No houses yet. Be the first: paste a link on the My picks tab.</p>`);
+    const c2 = $("#lf-clear2"); if (c2) c2.onclick = (e) => { e.preventDefault(); $("#lf-clear").click(); };
   }
   $("#lodging-filter").onchange = (e) => { S.filter = e.target.value; renderLodging(); };
   $("#lodging-favs").onchange = renderLodging;
