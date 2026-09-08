@@ -238,7 +238,11 @@ details.travel-detail summary{cursor:pointer;color:var(--sea)}
 /* phone safety: nothing may drag the page sideways */
 html,body{overflow-x:hidden;max-width:100%}
 .card,.panel,main{min-width:0}
-.travel-table td,.travel-table th{word-break:break-word}
+.travel-table td,.travel-table th{word-break:normal;overflow-wrap:normal}
+.travel-table td:nth-child(1),.travel-table th:nth-child(1){white-space:nowrap;min-width:9em}
+.travel-table td:nth-child(2),.travel-table th:nth-child(2){white-space:nowrap;text-align:center}
+.travel-table td:nth-child(3),.travel-table th:nth-child(3){white-space:nowrap;text-align:center}
+.travel-table td:nth-child(4){min-width:18em;overflow-wrap:break-word}
 @media (max-width:600px){
   .top{padding:10px 12px;gap:8px}
   .brand-title{font-size:1rem}.brand-sub{font-size:.72rem}
