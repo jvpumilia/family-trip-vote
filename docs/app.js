@@ -679,13 +679,20 @@
 
     // global click delegation
     document.addEventListener("click", async (e) => {
-      const t = e.target.closest("[data-open-dest],[data-open-prop],[data-goto-lodging],[data-star],[data-rescore-prop],[data-edit-prop],[data-del-prop],[data-rescore-dest],[data-del-dest],[data-adopt],[data-avail],[data-del-win],[data-photos],[data-hero],[data-fav],[data-discuss],[data-del-msg]");
+      const t = e.target.closest("[data-open-dest],[data-open-prop],[data-goto-lodging],[data-star],[data-rescore-prop],[data-edit-prop],[data-del-prop],[data-rescore-dest],[data-del-dest],[data-adopt],[data-avail],[data-del-win],[data-photos],[data-hero],[data-fav],[data-discuss],[data-del-msg],[data-reply],[data-jump]");
       if (!t || t.tagName === "FORM" || t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT") return;
       if (t.dataset.openDest) { e.preventDefault(); const d = S.dests.find((x) => x.id === t.dataset.openDest); if (d) destModal(d); }
       else if (t.dataset.openProp) { e.preventDefault(); const p = S.props.find((x) => x.id === t.dataset.openProp); if (p) propModal(p); }
       else if (t.dataset.gotoLodging) { S.filter = t.dataset.gotoLodging; renderLodging(); showTab("lodging"); }
       else if (t.dataset.star) { toggleFinalist(t.dataset.star); }
       else if (t.dataset.fav) { e.preventDefault(); e.stopPropagation(); toggleFav(t.dataset.fav); }
+      else if (t.dataset.reply) {
+        replyTo = t.dataset.reply; renderReplyBar();
+        const q = S.msgs.find((x) => x.id === replyTo); const who = S.profiles.find((p) => p.id === q?.user_id);
+        const b = $("#chat-body"); if (who && who.id !== S.session.user.id && !b.value.includes("@" + who.display_name)) b.value = `@${who.display_name} ` + b.value;
+        showTab("chat"); b.focus(); b.selectionStart = b.selectionEnd = b.value.length;
+      }
+      else if (t.dataset.jump) { const el = document.getElementById("msg-" + t.dataset.jump); if (el) { el.scrollIntoView({ behavior: "smooth", block: "center" }); el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); } }
       else if (t.dataset.discuss) { const p = S.props.find((x) => x.id === t.dataset.discuss); if (p) discussHouse(p); }
       else if (t.dataset.delMsg) { if (!confirm("Delete this message?")) return; const { error } = await sb.from("messages").delete().eq("id", t.dataset.delMsg); if (error) toast(error.message, 5000); else { await loadAll(); renderAll(); } }
       else if (t.dataset.hero) { const h = $("#hero-img"); if (h) h.src = t.dataset.hero; $$(".gallery img").forEach((i) => i.classList.toggle("on", i === t)); }
@@ -746,6 +753,7 @@
 
   // ---------- family chat ----------
   let chatTag = null; // {type:"property"|"destination", id}
+  let replyTo = null;  // message id being replied to
   const initials = (n) => (n || "?").split(/\s+/).map((x) => x[0]).join("").slice(0, 2).toUpperCase();
   const lastRead = () => S.profile?.chat_read_at || "";
   const unreadMsgs = () => S.msgs.filter((m) => m.created_at > lastRead() && m.user_id !== S.session.user.id);
@@ -782,13 +790,29 @@
     const who = S.profiles.find((p) => p.id === m.user_id);
     const mine = m.user_id === S.session.user.id;
     const toMe = (m.mentions || []).includes(S.session.user.id);
-    return `<div class="msg-item ${mine ? "mine" : ""} ${toMe ? "to-me" : ""}"><div class="av">${esc(initials(who?.display_name))}</div><div>
-      <div class="who"><b>${esc(who?.display_name || "Someone")}</b>${who ? ` · ${esc(who.household)}` : ""} · ${fmtDateTime(m.created_at)} ${mine || isAdmin() ? `<button class="del" data-del-msg="${m.id}" title="Delete">✕</button>` : ""}</div>
+    return `<div class="msg-item ${mine ? "mine" : ""} ${toMe ? "to-me" : ""}" id="msg-${m.id}"><div class="av">${esc(initials(who?.display_name))}</div><div>
+      <div class="who"><b>${esc(who?.display_name || "Someone")}</b>${who ? ` · ${esc(who.household)}` : ""} · ${fmtDateTime(m.created_at)} ${mini ? "" : `<button class="act" data-reply="${m.id}">Reply</button>`}${mine || isAdmin() ? `<button class="del" data-del-msg="${m.id}" title="Delete">✕</button>` : ""}</div>
+      ${m.reply_to ? quoteHtml(m.reply_to) : ""}
       ${!mini && (m.property_id || m.destination_id) ? `<div>${tagChip(m)}</div>` : ""}
       <div class="body">${renderBody(m.body)}</div></div></div>`;
   }
+  function quoteHtml(id) {
+    const q = S.msgs.find((x) => x.id === id);
+    if (!q) return `<div class="reply-quote">(original message deleted)</div>`;
+    const who = S.profiles.find((p) => p.id === q.user_id);
+    return `<div class="reply-quote" data-jump="${q.id}" title="Go to the original"><b>${esc(who?.display_name || "Someone")}</b>: ${esc(q.body.length > 120 ? q.body.slice(0, 119) + "…" : q.body)}</div>`;
+  }
+  function renderReplyBar() {
+    const el = $("#chat-reply");
+    if (!replyTo) { el.hidden = true; el.innerHTML = ""; return; }
+    const q = S.msgs.find((x) => x.id === replyTo); if (!q) { replyTo = null; el.hidden = true; return; }
+    const who = S.profiles.find((p) => p.id === q.user_id);
+    el.hidden = false; el.innerHTML = `<span>Replying to <b>${esc(who?.display_name || "Someone")}</b>: <span class="muted">${esc(q.body.slice(0, 80))}${q.body.length > 80 ? "…" : ""}</span></span><button type="button" class="btn small ghost" id="chat-unreply">✕</button>`;
+    $("#chat-unreply").onclick = () => { replyTo = null; renderReplyBar(); };
+  }
   function renderChat() {
     const list = $("#chat-list");
+    renderReplyBar();
     const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 60;
     list.innerHTML = S.msgs.length ? S.msgs.map((m) => msgHtml(m)).join("") : `<p class="empty">Nothing yet. Say hello, or tag a house and ask what people think.</p>`;
     if (S.tab === "chat" && !document.hidden) { list.scrollTop = list.scrollHeight; markChatRead(); }
@@ -845,12 +869,12 @@
   $("#chat-form").onsubmit = async (e) => {
     e.preventDefault();
     const body = $("#chat-body").value.trim(); if (!body) return;
-    const row = { user_id: S.session.user.id, body, mentions: mentionIds(body), property_id: chatTag?.type === "property" ? chatTag.id : null, destination_id: chatTag?.type === "destination" ? chatTag.id : null };
+    const row = { user_id: S.session.user.id, body, mentions: mentionIds(body), reply_to: replyTo, property_id: chatTag?.type === "property" ? chatTag.id : null, destination_id: chatTag?.type === "destination" ? chatTag.id : null };
     const btn = e.target.querySelector("button[type=submit]"); btn.disabled = true;
     const { error } = await sb.from("messages").insert(row);
     btn.disabled = false;
     if (error) { toast(error.message, 5000); return; }
-    $("#chat-body").value = ""; chatTag = null; await loadAll(); renderAll();
+    $("#chat-body").value = ""; chatTag = null; replyTo = null; await loadAll(); renderAll();
   };
   $("#chat-body").addEventListener("keydown", (e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") $("#chat-form").requestSubmit(); });
   function discussHouse(p) { chatTag = { type: "property", id: p.id }; closeModal(); showTab("chat"); renderChat(); $("#chat-body").focus(); }
