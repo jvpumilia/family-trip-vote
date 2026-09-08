@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-<link rel="stylesheet" href="style.css?v=20260908125850">
+<link rel="stylesheet" href="style.css?v=20260908130035">
 </head>
 <body>
 <header class="top">
@@ -141,7 +141,7 @@
     <div class="panel-head">
       <h2>All lodging</h2>
       <p class="muted">Every house anyone has added, scored out of 100. ★ marks a house on the ballot. The gate is the sleeping plan: five bedrooms that fit a couple (king, queen or two fulls) plus two kids' rooms (bunks welcome). Sofa beds and lofts don't count.</p>
-      <div class="filters">
+      <div class="toolbar">
         <select id="lodging-filter"><option value="">All destinations</option></select>
         <select id="lodging-sort">
           <option value="total">Sort: score</option>
@@ -149,9 +149,15 @@
           <option value="bedrooms">Sort: bedrooms</option>
           <option value="newest">Sort: newest</option>
         </select>
-        <label class="switch" style="font-size:.9rem"><input type="checkbox" id="lodging-favs"> ♥ My favorites <span id="lodging-favs-count" class="muted"></span></label>
-        <label class="switch" style="font-size:.9rem"><input type="checkbox" id="lodging-new"> New since I joined <span id="lodging-new-count" class="muted"></span></label>
-        <button class="btn small" id="lodging-more" type="button">More filters ▾</button>
+        <span id="lodging-count" class="muted tiny toolbar-count"></span>
+      </div>
+      <div class="chips quickchips">
+        <button type="button" class="chip fchip" data-f="favs">♥ My favorites <span class="cnt" id="lodging-favs-count"></span></button>
+        <button type="button" class="chip fchip" data-f="new">New since I joined <span class="cnt" id="lodging-new-count"></span></button>
+        <button type="button" class="chip fchip" data-f="gate">🛏️ Bed plan fits us</button>
+        <button type="button" class="chip fchip" data-f="elev">⛰ Under 5,000 ft</button>
+        <button type="button" class="chip fchip" data-f="ballot">★ On the ballot</button>
+        <button type="button" class="chip fchip more" id="lodging-more">More filters ▾</button>
       </div>
       <div id="lodging-filterbar" class="filterbar" hidden>
         <div class="fgroup"><span class="flabel">Must have</span>
@@ -167,15 +173,12 @@
             <button type="button" class="chip fchip" data-am="fenced">🌿 Fenced yard</button>
             <button type="button" class="chip fchip" data-am="pets">🐾 Pet friendly</button>
           </div></div>
-        <div class="fgroup"><span class="flabel">Fit</span>
+        <div class="fgroup"><span class="flabel">Also</span>
           <div class="chips">
-            <button type="button" class="chip fchip" data-f="gate">🛏️ Bed plan fits us</button>
-            <button type="button" class="chip fchip" data-f="elev">⛰ Under 5,000 ft</button>
             <button type="button" class="chip fchip" data-f="avail">✓ Availability confirmed</button>
             <button type="button" class="chip fchip" data-f="hidedq">Hide disqualified</button>
-            <button type="button" class="chip fchip" data-f="ballot">★ On the ballot</button>
-            <button type="button" class="chip fchip" data-f="ai">AI Selected</button>
-            <button type="button" class="chip fchip" data-f="family">Added by family</button>
+            <button type="button" class="chip fchip" data-f="ai">AI Selected only</button>
+            <button type="button" class="chip fchip" data-f="family">Family-added only</button>
             <button type="button" class="chip fchip" data-f="reviews">Has reviews</button>
           </div></div>
         <div class="fgroup"><span class="flabel">Numbers</span>
@@ -185,7 +188,7 @@
             <label>Max $/night <input type="number" id="lf-maxprice" min="0" step="50" placeholder="any"></label>
             <label>Min score <input type="number" id="lf-minscore" min="0" max="100" placeholder="0"></label>
           </div></div>
-        <div class="fgroup"><span class="flabel"></span><div class="row" style="display:flex;gap:.6em;align-items:center"><span id="lodging-count" class="muted tiny"></span><button type="button" class="btn small ghost" id="lf-clear">Clear filters</button></div></div>
+        <div class="fgroup"><span class="flabel"></span><div><button type="button" class="btn small ghost" id="lf-clear">Clear all filters</button></div></div>
       </div>
     </div>
     <div id="lodging-list" class="cards grid"></div>
@@ -257,10 +260,12 @@
     <div class="panel-head">
       <h2>Availability, house by house</h2>
       <p class="muted">Every Saturday-to-Saturday week from May 1 to Aug 20, 2027. When you look at a host's calendar, open the house and add what you saw; it shows up here for everyone. Green = someone confirmed it's open that week, red = booked, grey = nobody has checked.</p>
-      <div class="filters">
+      <div class="toolbar">
         <select id="avail-filter"><option value="">All destinations</option></select>
-        <label class="switch" style="font-size:.9rem"><input type="checkbox" id="avail-only-known"> Only houses with something recorded</label>
-        <label class="switch" style="font-size:.9rem"><input type="checkbox" id="avail-favs"> ♥ My favorites</label>
+      </div>
+      <div class="chips quickchips">
+        <button type="button" class="chip fchip" id="avail-only-known">Only houses with something recorded</button>
+        <button type="button" class="chip fchip" id="avail-favs">♥ My favorites</button>
       </div>
     </div>
     <div id="avail-area"></div>
@@ -306,7 +311,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="config.js?v=20260908125850"></script>
-<script src="app.js?v=20260908125850"></script>
+<script src="config.js?v=20260908130035"></script>
+<script src="app.js?v=20260908130035"></script>
 </body>
 </html>

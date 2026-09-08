@@ -264,3 +264,11 @@ html,body{overflow-x:hidden;max-width:100%}
 .fnums label{font-size:.78rem;font-weight:500;width:120px}
 .fnums input{padding:.35em .5em}
 @media (max-width:600px){.fgroup{grid-template-columns:1fr}.flabel{padding-top:0}}
+
+.toolbar{display:flex;gap:.6em;align-items:center;flex-wrap:wrap;margin-top:.7em}
+.toolbar select{width:auto;max-width:260px;padding:.45em .7em}
+.toolbar-count{margin-left:auto}
+.quickchips{margin:.55em 0 .2em}
+.chip.fchip .cnt{opacity:.7;margin-left:.15em}
+.chip.fchip.more{background:transparent;border-style:dashed}
+.filterbar{margin-top:6px}

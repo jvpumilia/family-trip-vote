@@ -369,6 +369,7 @@
       if (f === "ai" && !p.ai_pick) return false;
       if (f === "family" && p.ai_pick) return false;
       if (f === "reviews" && !(p.review_count > 0 || p.rating > 0)) return false;
+      // "favs" and "new" are applied before this, per person
     }
     if (LF.minbr && !((p.bedrooms || 0) >= Number(LF.minbr))) return false;
     if (LF.minba && !((p.bathrooms || 0) >= Number(LF.minba))) return false;
@@ -381,8 +382,9 @@
     $$("#lf-amenities .fchip").forEach((b) => b.classList.toggle("on", LF.am.includes(b.dataset.am)));
     $$("[data-f].fchip").forEach((b) => b.classList.toggle("on", LF.f.includes(b.dataset.f)));
     $("#lf-minbr").value = LF.minbr; $("#lf-minba").value = LF.minba; $("#lf-maxprice").value = LF.maxprice; $("#lf-minscore").value = LF.minscore;
-    const active = LF.am.length + LF.f.length + ["minbr", "minba", "maxprice", "minscore"].filter((k) => LF[k]).length;
-    $("#lodging-more").textContent = active ? `Filters (${active}) ▾` : "More filters ▾";
+    const panelKeys = ["avail", "hidedq", "ai", "family", "reviews"];
+    const active = LF.am.length + LF.f.filter((k) => panelKeys.includes(k)).length + ["minbr", "minba", "maxprice", "minscore"].filter((k) => LF[k]).length;
+    $("#lodging-more").textContent = active ? `More filters (${active}) ▾` : "More filters ▾";
     if (active) $("#lodging-filterbar").hidden = false;
   }
   $("#lodging-more").onclick = () => { const bar = $("#lodging-filterbar"); bar.hidden = !bar.hidden; };
@@ -417,22 +419,21 @@
     sel.innerHTML = `<option value="">All destinations</option>` + S.dests.map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join("");
     sel.value = S.filter || cur || "";
     let list = S.props.filter((p) => !S.filter || p.destination_id === S.filter);
-    if ($("#lodging-favs").checked) list = list.filter(isFav);
-    if ($("#lodging-new").checked) list = list.filter(isNew);
+    if (LF.f.includes("favs")) list = list.filter(isFav);
+    if (LF.f.includes("new")) list = list.filter(isNew);
     const beforeAdv = list.length;
     list = list.filter(passesFilters);
-    $("#lodging-count").textContent = `Showing ${list.length} of ${S.props.length} houses`;
+    $("#lodging-count").textContent = list.length === S.props.length ? `${S.props.length} houses` : `Showing ${list.length} of ${S.props.length} houses`;
     $("#lodging-new-count").textContent = newCount() ? `(${newCount()})` : "";
     const tab = $('[data-tab="lodging"]'); if (tab) tab.innerHTML = newCount() ? `Lodging <span class="tabdot">${newCount()}</span>` : "Lodging";
     $("#lodging-favs-count").textContent = S.favs.size ? `(${S.favs.size})` : "";
     const sort = $("#lodging-sort").value;
     list = list.slice().sort((a, b) => (isDq(a) - isDq(b)) || (sort === "price" ? (a.price_night || 1e9) - (b.price_night || 1e9) : sort === "bedrooms" ? (b.bedrooms || 0) - (a.bedrooms || 0) : sort === "newest" ? new Date(b.created_at) - new Date(a.created_at) : b.total - a.total));
-    $("#lodging-list").innerHTML = list.length ? list.map((p) => propCard(p)).join("") : ($("#lodging-favs").checked ? `<p class="empty">No favorites yet. Tap the ♡ on any house to save it here.</p>` : beforeAdv && !list.length ? `<p class="empty">No house matches those filters. <a href="#" id="lf-clear2">Clear filters</a></p>` : `<p class="empty">No houses yet. Be the first: paste a link on the My picks tab.</p>`);
+    $("#lodging-list").innerHTML = list.length ? list.map((p) => propCard(p)).join("") : (LF.f.includes("favs") && !S.favs.size ? `<p class="empty">No favorites yet. Tap the ♡ on any house to save it here.</p>` : S.props.length ? `<p class="empty">No house matches those filters. <a href="#" id="lf-clear2">Clear filters</a></p>` : `<p class="empty">No houses yet. Be the first: paste a link on the My picks tab.</p>`);
     const c2 = $("#lf-clear2"); if (c2) c2.onclick = (e) => { e.preventDefault(); $("#lf-clear").click(); };
   }
   $("#lodging-filter").onchange = (e) => { S.filter = e.target.value; renderLodging(); };
-  $("#lodging-favs").onchange = renderLodging;
-  $("#lodging-new").onchange = renderLodging;
+
   $("#lodging-sort").onchange = renderLodging;
 
   function propModal(p) {
@@ -768,11 +769,11 @@
     const sel = $("#avail-filter"); const cur = sel.value;
     sel.innerHTML = `<option value="">All destinations</option>` + S.dests.map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join("");
     sel.value = cur || "";
-    const onlyKnown = $("#avail-only-known").checked;
+    const onlyKnown = $("#avail-only-known").classList.contains("on");
     const weeks = seasonWeeks();
     let rows = S.props.filter((p) => p.status === "scored" && (!cur || p.destination_id === cur));
     if (onlyKnown) rows = rows.filter((p) => S.avail.some((a) => a.property_id === p.id) || p.avail_status !== "unknown");
-    if ($("#avail-favs").checked) rows = rows.filter(isFav);
+    if ($("#avail-favs").classList.contains("on")) rows = rows.filter(isFav);
     rows.sort((a, b) => (isDq(a) - isDq(b)) || (b.is_finalist - a.is_finalist) || (b.total - a.total));
     if (!rows.length) { area.innerHTML = `<p class="empty">Nothing to show yet.</p>`; return; }
     const t = S.settings.trip || {};
@@ -785,8 +786,8 @@
       <p class="tiny muted">Hover a square for the details. Click a house name to add what you found on its calendar.</p>`;
   }
   $("#avail-filter").onchange = renderAvail;
-  $("#avail-only-known").onchange = renderAvail;
-  $("#avail-favs").onchange = renderAvail;
+  $("#avail-only-known").onclick = (e) => { e.currentTarget.classList.toggle("on"); renderAvail(); };
+  $("#avail-favs").onclick = (e) => { e.currentTarget.classList.toggle("on"); renderAvail(); };
   function availSection(p) {
     const t = S.settings.trip || {};
     const ws = S.avail.filter((x) => x.property_id === p.id);
