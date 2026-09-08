@@ -847,7 +847,7 @@
     const q = mentionQuery();
     if (q === null) { mp.hidden = true; return; }
     const people = S.profiles.filter((pr) => pr.id !== S.session.user.id && pr.display_name.toLowerCase().startsWith(q.toLowerCase()));
-    const opts = [...people.map((pr) => ({ label: pr.display_name, sub: pr.household, insert: pr.display_name })), ...("everyone".startsWith(q.toLowerCase()) ? [{ label: "everyone", sub: "the whole family", insert: "everyone" }] : [])];
+    const opts = [...("everyone".startsWith(q.toLowerCase()) ? [{ label: "everyone", sub: "the whole family", insert: "everyone" }] : []), ...people.map((pr) => ({ label: pr.display_name, sub: pr.household, insert: pr.display_name }))];
     if (!opts.length) { mp.hidden = true; return; }
     mp.hidden = false;
     mp.innerHTML = opts.map((o) => `<button type="button" class="pick-item" data-insert="${esc(o.insert)}"><b>@${esc(o.label)}</b> <span class="s">${esc(o.sub)}</span></button>`).join("");
