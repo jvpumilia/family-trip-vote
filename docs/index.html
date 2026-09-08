@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-<link rel="stylesheet" href="style.css?v=20260908130255">
+<link rel="stylesheet" href="style.css?v=20260908133940">
 </head>
 <body>
 <header class="top">
@@ -18,6 +18,7 @@
     <div class="brand-sub">14 of us · kids 11, 8, 4 &amp; 2 · book by <b>Sept 30</b></div>
   </div>
   <div class="userchip" id="userchip" hidden>
+    <button class="chat-flag" id="chat-flag" hidden title="Unread chat messages"></button>
     <span id="user-name"></span>
     <button class="link" id="signout">Sign out</button>
   </div>
@@ -76,7 +77,7 @@
           <ol class="list">
             <li><b>Look around.</b> The Map and Destinations tabs show every place under consideration, scored the same way, with travel difficulty from each home.</li>
             <li><b>Add houses.</b> Check the Lodging tab first so we don't add the same house twice (the site blocks a repeat link or name and opens the existing one). On My picks, paste a listing link (Airbnb, VRBO or a cabin company). The site reads the page, places it on the map, and scores it against our family's needs in about a minute. Add as many as you like; add the nightly price if the page doesn't show it.</li>
-            <li><b>Talk it over.</b> The Chat tab is one thread for the whole family. Tag the house you're discussing so the thread stays attached to it; each house's details show its recent messages.</li>
+            <li><b>Talk it over.</b> The Chat tab is one thread for the whole family. Tag the house you're discussing so the thread stays attached to it; each house's details show its recent messages. Type <b>@</b> to mention someone. A 💬 flag at the top of every page tells you when there are messages you haven't seen, red when someone mentioned you.</li>
             <li><b>Spot what's new.</b> Houses added after you joined carry a green <b>New</b> badge until you open them, and the Lodging tab shows how many are waiting.</li>
             <li><b>Save favorites.</b> Tap the ♡ on any house to keep it in your own favorites list (nobody else sees it). The Lodging and Availability tabs have a "My favorites" filter.</li>
             <li><b>Check availability.</b> The site can't read a host's calendar, so when you look at one, open the house and record the weeks you saw open or booked. The Availability tab lines every house up across May 1 to Aug 20 so we can see who is open when. "Not available for our week" disqualifies a house from the ballot.</li>
@@ -268,7 +269,8 @@
       <form id="chat-form" class="chat-form">
         <div id="chat-tag" class="chat-tag" hidden></div>
         <div class="chat-row">
-          <textarea id="chat-body" rows="2" placeholder="Say something…" maxlength="4000"></textarea>
+          <textarea id="chat-body" rows="2" placeholder="Say something… type @ to mention someone" maxlength="4000"></textarea>
+          <div id="mention-picker" class="chat-picker mention-picker" hidden></div>
           <button class="btn primary" type="submit">Send</button>
         </div>
         <div class="chat-tools">
@@ -335,7 +337,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="config.js?v=20260908130255"></script>
-<script src="app.js?v=20260908130255"></script>
+<script src="config.js?v=20260908133940"></script>
+<script src="app.js?v=20260908133940"></script>
 </body>
 </html>

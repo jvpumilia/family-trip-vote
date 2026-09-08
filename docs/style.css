@@ -296,3 +296,10 @@ html,body{overflow-x:hidden;max-width:100%}
 .tabdot.chat{background:var(--sea)}
 .thread-mini{margin-top:.5em}
 .thread-mini .msg-item{grid-template-columns:28px 1fr}.thread-mini .av{width:28px;height:28px;font-size:.75rem}
+
+.chat-flag{border:0;background:var(--sea);color:#fff;border-radius:999px;padding:.25em .7em;font-weight:700;font-size:.8rem;cursor:pointer;white-space:nowrap}
+.chat-flag.mention{background:var(--d9)}
+.mention{background:#fff3c4;color:#6a4a00;border-radius:4px;padding:0 .2em;font-weight:600}
+.msg-item.to-me{background:#fffbea;border-radius:10px;padding:.35em .5em;margin:0 -.5em}
+.mention-picker{left:0;bottom:calc(100% + 6px)}
+.chat-row{position:relative}

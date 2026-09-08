@@ -195,6 +195,7 @@
     history.replaceState(null, "", "#" + name);
     if (name === "map" && S.map) setTimeout(() => { S.map.invalidateSize(); fitMapOnce(); }, 60);
     if (name === "chat") renderChat();
+    else renderChatFlag();
   }
 
   // ---------- map ----------
@@ -746,9 +747,32 @@
   // ---------- family chat ----------
   let chatTag = null; // {type:"property"|"destination", id}
   const initials = (n) => (n || "?").split(/\s+/).map((x) => x[0]).join("").slice(0, 2).toUpperCase();
-  const lastReadKey = "ftv_chat_read";
-  const lastRead = () => { try { return localStorage.getItem(lastReadKey) || ""; } catch { return ""; } };
-  const unreadCount = () => S.msgs.filter((m) => m.created_at > lastRead() && m.user_id !== S.session.user.id).length;
+  const lastRead = () => S.profile?.chat_read_at || "";
+  const unreadMsgs = () => S.msgs.filter((m) => m.created_at > lastRead() && m.user_id !== S.session.user.id);
+  const unreadCount = () => unreadMsgs().length;
+  const unreadMentions = () => unreadMsgs().filter((m) => (m.mentions || []).includes(S.session.user.id)).length;
+  let markingRead = false;
+  async function markChatRead() {
+    if (!S.msgs.length) return;
+    const latest = S.msgs[S.msgs.length - 1].created_at;
+    if (latest <= lastRead() || markingRead) return;
+    markingRead = true;
+    S.profile.chat_read_at = latest;
+    await sb.from("profiles").update({ chat_read_at: latest }).eq("id", S.session.user.id);
+    markingRead = false; renderChatFlag();
+  }
+  function renderChatFlag() {
+    const u = unreadCount(), um = unreadMentions();
+    const flag = $("#chat-flag");
+    if (flag) { flag.hidden = !u; flag.className = "chat-flag" + (um ? " mention" : ""); flag.textContent = um ? `💬 @ you${u > um ? ` +${u - um}` : ""}` : `💬 ${u} new`; flag.onclick = () => showTab("chat"); }
+    const tab = $('[data-tab="chat"]'); if (tab) tab.innerHTML = u ? `Chat <span class="tabdot chat">${u}</span>` : "Chat";
+    document.title = (u ? `(${u}) ` : "") + "Family Trip 2027 · Where are we going?";
+  }
+  const renderBody = (text) => {
+    let html = esc(text);
+    S.profiles.forEach((pr) => { const n = esc(pr.display_name); html = html.split("@" + n).join(`<span class="mention">@${n}</span>`); });
+    return html.replace(/@everyone\b/g, '<span class="mention">@everyone</span>');
+  };
   function tagChip(m) {
     if (m.property_id) { const p = S.props.find((x) => x.id === m.property_id); return p ? `<a href="#" class="tagchip" data-open-prop="${p.id}">${p.photos?.[0] || p.image_url ? `<img src="${esc(p.photos?.[0] || p.image_url)}" alt="" referrerpolicy="no-referrer">` : "🏠"} ${esc(p.title.length > 40 ? p.title.slice(0, 39) + "…" : p.title)}</a>` : `<span class="tagchip">🏠 (house removed)</span>`; }
     if (m.destination_id) { const d = S.dests.find((x) => x.id === m.destination_id); return d ? `<a href="#" class="tagchip" data-open-dest="${d.id}">📍 ${esc(d.name)}</a>` : ""; }
@@ -757,18 +781,19 @@
   function msgHtml(m, mini) {
     const who = S.profiles.find((p) => p.id === m.user_id);
     const mine = m.user_id === S.session.user.id;
-    return `<div class="msg-item ${mine ? "mine" : ""}"><div class="av">${esc(initials(who?.display_name))}</div><div>
+    const toMe = (m.mentions || []).includes(S.session.user.id);
+    return `<div class="msg-item ${mine ? "mine" : ""} ${toMe ? "to-me" : ""}"><div class="av">${esc(initials(who?.display_name))}</div><div>
       <div class="who"><b>${esc(who?.display_name || "Someone")}</b>${who ? ` · ${esc(who.household)}` : ""} · ${fmtDateTime(m.created_at)} ${mine || isAdmin() ? `<button class="del" data-del-msg="${m.id}" title="Delete">✕</button>` : ""}</div>
       ${!mini && (m.property_id || m.destination_id) ? `<div>${tagChip(m)}</div>` : ""}
-      <div class="body">${esc(m.body)}</div></div></div>`;
+      <div class="body">${renderBody(m.body)}</div></div></div>`;
   }
   function renderChat() {
     const list = $("#chat-list");
     const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 60;
     list.innerHTML = S.msgs.length ? S.msgs.map((m) => msgHtml(m)).join("") : `<p class="empty">Nothing yet. Say hello, or tag a house and ask what people think.</p>`;
-    if (S.tab === "chat") { list.scrollTop = list.scrollHeight; try { if (S.msgs.length) localStorage.setItem(lastReadKey, S.msgs[S.msgs.length - 1].created_at); } catch { /* ignore */ } }
+    if (S.tab === "chat" && !document.hidden) { list.scrollTop = list.scrollHeight; markChatRead(); }
     else if (atBottom) list.scrollTop = list.scrollHeight;
-    const tab = $('[data-tab="chat"]'); const u = unreadCount(); if (tab) tab.innerHTML = u ? `Chat <span class="tabdot chat">${u}</span>` : "Chat";
+    renderChatFlag();
     const tagEl = $("#chat-tag");
     if (chatTag) { const fake = chatTag.type === "property" ? { property_id: chatTag.id } : { destination_id: chatTag.id }; tagEl.hidden = false; tagEl.innerHTML = `Tagging: ${tagChip(fake)} <button type="button" class="btn small ghost" id="chat-untag">✕</button>`; $("#chat-untag").onclick = () => { chatTag = null; renderChat(); }; }
     else { tagEl.hidden = true; tagEl.innerHTML = ""; }
@@ -788,10 +813,39 @@
   $("#chat-tagdest-btn").onclick = () => openPicker("destination");
   $("#chat-search").oninput = fillPicker;
   document.addEventListener("click", (e) => { const pk = $("#chat-picker"); if (!pk.hidden && !e.target.closest("#chat-picker,#chat-tag-btn,#chat-tagdest-btn")) pk.hidden = true; });
+  const chatBody = $("#chat-body"), mp = $("#mention-picker");
+  function mentionQuery() {
+    const v = chatBody.value.slice(0, chatBody.selectionStart);
+    const m = v.match(/(?:^|\s)@([A-Za-z]*)$/);
+    return m ? m[1] : null;
+  }
+  function showMentionPicker() {
+    const q = mentionQuery();
+    if (q === null) { mp.hidden = true; return; }
+    const people = S.profiles.filter((pr) => pr.id !== S.session.user.id && pr.display_name.toLowerCase().startsWith(q.toLowerCase()));
+    const opts = [...people.map((pr) => ({ label: pr.display_name, sub: pr.household, insert: pr.display_name })), ...("everyone".startsWith(q.toLowerCase()) ? [{ label: "everyone", sub: "the whole family", insert: "everyone" }] : [])];
+    if (!opts.length) { mp.hidden = true; return; }
+    mp.hidden = false;
+    mp.innerHTML = opts.map((o) => `<button type="button" class="pick-item" data-insert="${esc(o.insert)}"><b>@${esc(o.label)}</b> <span class="s">${esc(o.sub)}</span></button>`).join("");
+    $$(".pick-item", mp).forEach((b) => b.onmousedown = (ev) => { ev.preventDefault(); insertMention(b.dataset.insert); });
+  }
+  function insertMention(name) {
+    const pos = chatBody.selectionStart, before = chatBody.value.slice(0, pos).replace(/@[A-Za-z]*$/, "@" + name + " "), after = chatBody.value.slice(pos);
+    chatBody.value = before + after; chatBody.selectionStart = chatBody.selectionEnd = before.length; mp.hidden = true; chatBody.focus();
+  }
+  chatBody.addEventListener("input", showMentionPicker);
+  chatBody.addEventListener("keydown", (e) => { if (!mp.hidden && (e.key === "Enter" || e.key === "Tab")) { const first = mp.querySelector(".pick-item"); if (first) { e.preventDefault(); insertMention(first.dataset.insert); } } if (e.key === "Escape") mp.hidden = true; });
+  chatBody.addEventListener("blur", () => setTimeout(() => (mp.hidden = true), 150));
+  function mentionIds(body) {
+    const ids = new Set();
+    if (/@everyone\b/.test(body)) S.profiles.forEach((pr) => { if (pr.id !== S.session.user.id) ids.add(pr.id); });
+    S.profiles.forEach((pr) => { if (body.includes("@" + pr.display_name)) ids.add(pr.id); });
+    return [...ids];
+  }
   $("#chat-form").onsubmit = async (e) => {
     e.preventDefault();
     const body = $("#chat-body").value.trim(); if (!body) return;
-    const row = { user_id: S.session.user.id, body, property_id: chatTag?.type === "property" ? chatTag.id : null, destination_id: chatTag?.type === "destination" ? chatTag.id : null };
+    const row = { user_id: S.session.user.id, body, mentions: mentionIds(body), property_id: chatTag?.type === "property" ? chatTag.id : null, destination_id: chatTag?.type === "destination" ? chatTag.id : null };
     const btn = e.target.querySelector("button[type=submit]"); btn.disabled = true;
     const { error } = await sb.from("messages").insert(row);
     btn.disabled = false;
@@ -1117,6 +1171,8 @@
 
   // remember whether the how-it-works panel is open
   (() => { const h = $("#howto"); if (!h) return; try { h.open = localStorage.getItem("ftv_howto") !== "closed"; } catch { h.open = true; } h.addEventListener("toggle", () => { try { localStorage.setItem("ftv_howto", h.open ? "open" : "closed"); } catch { /* ignore */ } }); })();
+
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && S.tab === "chat" && S.session) markChatRead(); });
 
   // kick off
   sb.auth.getSession().then(({ data: { session } }) => { S.session = session; if (session) boot(); else showAuth(); });
