@@ -242,7 +242,7 @@ export async function crawlSite(url: string, maxPages = 10): Promise<{ pages: Ar
   return { pages, combined, photos: uniq(photosAll).slice(0, 20) };
 }
 
-const BAD_IMG = /logo|icon|sprite|avatar|badge|favicon|placeholder|pixel|tracking|\.svg|\.gif|\bmap\b|flag|payment|visa|mastercard|star|arrow|banner|header|footer|brand|award|seal|button|social|facebook|instagram|youtube/i;
+const BAD_IMG = /logo|icon|sprite|avatar|badge|favicon|placeholder|pixel|tracking|\.svg|\.gif|\bmap\b|flag|payment|visa|mastercard|star|arrow|banner|header|footer|brand|award|seal|button|social|facebook|instagram|youtube|menu|hamburger|\/themes?\/|\/theme\/|nav|widget|bg[-_]|background|pattern|texture/i;
 function uniq(arr: string[]) { return Array.from(new Set(arr)); }
 /** Listing photos: Airbnb and VRBO image CDNs, or large <img> tags on a cabin company's pages. */
 export function collectPhotos(html: string, source: string, base?: string): string[] {
