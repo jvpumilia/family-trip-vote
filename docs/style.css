@@ -272,3 +272,27 @@ html,body{overflow-x:hidden;max-width:100%}
 .chip.fchip .cnt{opacity:.7;margin-left:.15em}
 .chip.fchip.more{background:transparent;border-style:dashed}
 .filterbar{margin-top:6px}
+
+.chat-card{padding:0;overflow:hidden}
+.chat-list{max-height:60vh;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:.7em}
+.msg-item{display:grid;grid-template-columns:36px 1fr;gap:.6em;align-items:start}
+.msg-item .av{width:36px;height:36px;border-radius:50%;background:var(--sea);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.9rem}
+.msg-item.mine .av{background:var(--accent)}
+.msg-item .who{font-size:.8rem;color:var(--muted)}.msg-item .who b{color:var(--ink)}
+.msg-item .body{white-space:pre-wrap;word-break:break-word;margin:.1em 0}
+.msg-item .del{border:0;background:none;color:var(--muted);cursor:pointer;font-size:.75rem;padding:0 .3em}
+.tagchip{display:inline-flex;align-items:center;gap:.35em;background:#eaf3f8;border:1px solid #cfe3ec;color:var(--sea);border-radius:999px;padding:.15em .6em;font-size:.78rem;font-weight:600;text-decoration:none;max-width:100%}
+.tagchip img{width:22px;height:22px;border-radius:50%;object-fit:cover}
+.chat-form{border-top:1px solid var(--line);padding:10px 12px 12px;background:#fbf8f2;position:relative}
+.chat-row{display:flex;gap:.5em;align-items:flex-end}
+.chat-row textarea{flex:1;resize:vertical;min-height:44px}
+.chat-tools{display:flex;gap:.4em;margin-top:.4em;flex-wrap:wrap;position:relative}
+.chat-tag{margin-bottom:.4em}
+.chat-picker{position:absolute;left:0;bottom:calc(100% + 6px);width:min(420px,95vw);background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:8px;z-index:20}
+.chat-picker input{margin-bottom:6px}
+.chat-picker-list{max-height:220px;overflow-y:auto}
+.pick-item{display:block;width:100%;text-align:left;border:0;background:none;padding:.4em .5em;border-radius:6px;cursor:pointer;font:inherit}
+.pick-item:hover{background:#f3ede2}.pick-item .s{color:var(--muted);font-size:.75rem}
+.tabdot.chat{background:var(--sea)}
+.thread-mini{margin-top:.5em}
+.thread-mini .msg-item{grid-template-columns:28px 1fr}.thread-mini .av{width:28px;height:28px;font-size:.75rem}

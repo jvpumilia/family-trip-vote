@@ -21,7 +21,7 @@
     ["reviews", "Reviews", 10], ["logistics", "Parking & toddler logistics", 5],
   ];
 
-  const S = { session: null, profile: null, profiles: [], origins: [], dests: [], props: [], votes: [], settings: {}, avail: [], favs: new Set(), noms: [], seen: new Set(), tab: "map", map: null, layers: {}, selectedDest: null, filter: "", sort: "total" };
+  const S = { session: null, profile: null, profiles: [], origins: [], dests: [], props: [], votes: [], settings: {}, avail: [], favs: new Set(), noms: [], seen: new Set(), msgs: [], tab: "map", map: null, layers: {}, selectedDest: null, filter: "", sort: "total" };
 
   // ---------- tiny UI helpers ----------
   let toastT;
@@ -131,7 +131,7 @@
 
   // ---------- data ----------
   async function loadAll() {
-    const [pr, o, d, p, v, st, av, fv, nm, sn] = await Promise.all([
+    const [pr, o, d, p, v, st, av, fv, nm, sn, mg] = await Promise.all([
       sb.from("profiles").select("*"),
       sb.from("origins").select("*").order("sort"),
       sb.from("destinations").select("*"),
@@ -142,7 +142,9 @@
       sb.from("favorites").select("property_id"),
       sb.from("nominations").select("*"),
       sb.from("seen_properties").select("property_id"),
+      sb.from("messages").select("*").order("created_at", { ascending: true }).limit(500),
     ]);
+    S.msgs = mg.data || [];
     S.noms = nm.data || [];
     S.seen = new Set((sn.data || []).map((r) => r.property_id));
     S.avail = av.data || [];
@@ -168,7 +170,8 @@
         .on("postgres_changes", { event: "*", schema: "public", table: "destinations" }, refresh)
         .on("postgres_changes", { event: "*", schema: "public", table: "votes" }, refresh)
         .on("postgres_changes", { event: "*", schema: "public", table: "availability" }, refresh)
-        .on("postgres_changes", { event: "*", schema: "public", table: "nominations" }, refresh).subscribe();
+        .on("postgres_changes", { event: "*", schema: "public", table: "nominations" }, refresh)
+        .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, refresh).subscribe();
     }
     renderAll();
     resumePendingAi();
@@ -176,7 +179,7 @@
 
   function renderAll() {
     if (!S.session || !S.profile) return; // signed out, or an account that no longer exists
-    renderMap(); renderDests(); renderLodging(); renderMine(); renderVote(); renderAvail(); renderRecs(); renderResults(); if (isAdmin()) renderAdmin();
+    renderMap(); renderDests(); renderLodging(); renderMine(); renderVote(); renderAvail(); renderRecs(); renderResults(); renderChat(); if (isAdmin()) renderAdmin();
   }
 
   // ---------- tabs ----------
@@ -191,6 +194,7 @@
     $$(".panel").forEach((p) => p.hidden = p.dataset.panel !== name);
     history.replaceState(null, "", "#" + name);
     if (name === "map" && S.map) setTimeout(() => { S.map.invalidateSize(); fitMapOnce(); }, 60);
+    if (name === "chat") renderChat();
   }
 
   // ---------- map ----------
@@ -481,6 +485,7 @@
       ${!p.ai_pick && aiMatchFor(p) ? `<p class="msg ok"><i class="pill match">Matches an AI Selected house</i> Claude independently recommended this same house. <a href="#" data-open-prop="${aiMatchFor(p).id}">See its note</a>.</p>` : ""}
       ${p.notes ? `<div class="section-title">Notes from whoever added it</div><p>${esc(p.notes)}</p>` : ""}
       ${p.description ? `<details class="quiet"><summary>Listing description</summary><p>${esc(p.description)}</p></details>` : ""}
+      ${threadFor(p)}
       <details class="quiet"><summary>More</summary>Added ${fmtDate(p.created_at)}${p.submitted_by ? ` by ${esc(nameOf(p.submitted_by))} (${esc(householdOf(p.submitted_by))})` : p.ai_pick ? " by Claude (AI Selected)" : " from the decision packet"}.</details>
       ${mine || isAdmin() || p.ai_pick ? `<div class="actions">
         ${p.url ? `<button class="btn small" data-photos="${p.id}">${photos.length ? "Refresh photos" : "Get photos from the listing"}</button>` : ""}
@@ -673,13 +678,15 @@
 
     // global click delegation
     document.addEventListener("click", async (e) => {
-      const t = e.target.closest("[data-open-dest],[data-open-prop],[data-goto-lodging],[data-star],[data-rescore-prop],[data-edit-prop],[data-del-prop],[data-rescore-dest],[data-del-dest],[data-adopt],[data-avail],[data-del-win],[data-photos],[data-hero],[data-fav]");
+      const t = e.target.closest("[data-open-dest],[data-open-prop],[data-goto-lodging],[data-star],[data-rescore-prop],[data-edit-prop],[data-del-prop],[data-rescore-dest],[data-del-dest],[data-adopt],[data-avail],[data-del-win],[data-photos],[data-hero],[data-fav],[data-discuss],[data-del-msg]");
       if (!t || t.tagName === "FORM" || t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT") return;
       if (t.dataset.openDest) { e.preventDefault(); const d = S.dests.find((x) => x.id === t.dataset.openDest); if (d) destModal(d); }
       else if (t.dataset.openProp) { e.preventDefault(); const p = S.props.find((x) => x.id === t.dataset.openProp); if (p) propModal(p); }
       else if (t.dataset.gotoLodging) { S.filter = t.dataset.gotoLodging; renderLodging(); showTab("lodging"); }
       else if (t.dataset.star) { toggleFinalist(t.dataset.star); }
       else if (t.dataset.fav) { e.preventDefault(); e.stopPropagation(); toggleFav(t.dataset.fav); }
+      else if (t.dataset.discuss) { const p = S.props.find((x) => x.id === t.dataset.discuss); if (p) discussHouse(p); }
+      else if (t.dataset.delMsg) { if (!confirm("Delete this message?")) return; const { error } = await sb.from("messages").delete().eq("id", t.dataset.delMsg); if (error) toast(error.message, 5000); else { await loadAll(); renderAll(); } }
       else if (t.dataset.hero) { const h = $("#hero-img"); if (h) h.src = t.dataset.hero; $$(".gallery img").forEach((i) => i.classList.toggle("on", i === t)); }
       else if (t.dataset.photos) {
         t.disabled = true; t.textContent = "Fetching…";
@@ -734,6 +741,69 @@
         if (error) toast(error.message, 5000); else { closeModal(); await loadAll(); renderAll(); }
       }
     });
+  }
+
+  // ---------- family chat ----------
+  let chatTag = null; // {type:"property"|"destination", id}
+  const initials = (n) => (n || "?").split(/\s+/).map((x) => x[0]).join("").slice(0, 2).toUpperCase();
+  const lastReadKey = "ftv_chat_read";
+  const lastRead = () => { try { return localStorage.getItem(lastReadKey) || ""; } catch { return ""; } };
+  const unreadCount = () => S.msgs.filter((m) => m.created_at > lastRead() && m.user_id !== S.session.user.id).length;
+  function tagChip(m) {
+    if (m.property_id) { const p = S.props.find((x) => x.id === m.property_id); return p ? `<a href="#" class="tagchip" data-open-prop="${p.id}">${p.photos?.[0] || p.image_url ? `<img src="${esc(p.photos?.[0] || p.image_url)}" alt="" referrerpolicy="no-referrer">` : "🏠"} ${esc(p.title.length > 40 ? p.title.slice(0, 39) + "…" : p.title)}</a>` : `<span class="tagchip">🏠 (house removed)</span>`; }
+    if (m.destination_id) { const d = S.dests.find((x) => x.id === m.destination_id); return d ? `<a href="#" class="tagchip" data-open-dest="${d.id}">📍 ${esc(d.name)}</a>` : ""; }
+    return "";
+  }
+  function msgHtml(m, mini) {
+    const who = S.profiles.find((p) => p.id === m.user_id);
+    const mine = m.user_id === S.session.user.id;
+    return `<div class="msg-item ${mine ? "mine" : ""}"><div class="av">${esc(initials(who?.display_name))}</div><div>
+      <div class="who"><b>${esc(who?.display_name || "Someone")}</b>${who ? ` · ${esc(who.household)}` : ""} · ${fmtDateTime(m.created_at)} ${mine || isAdmin() ? `<button class="del" data-del-msg="${m.id}" title="Delete">✕</button>` : ""}</div>
+      ${!mini && (m.property_id || m.destination_id) ? `<div>${tagChip(m)}</div>` : ""}
+      <div class="body">${esc(m.body)}</div></div></div>`;
+  }
+  function renderChat() {
+    const list = $("#chat-list");
+    const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 60;
+    list.innerHTML = S.msgs.length ? S.msgs.map((m) => msgHtml(m)).join("") : `<p class="empty">Nothing yet. Say hello, or tag a house and ask what people think.</p>`;
+    if (S.tab === "chat") { list.scrollTop = list.scrollHeight; try { if (S.msgs.length) localStorage.setItem(lastReadKey, S.msgs[S.msgs.length - 1].created_at); } catch { /* ignore */ } }
+    else if (atBottom) list.scrollTop = list.scrollHeight;
+    const tab = $('[data-tab="chat"]'); const u = unreadCount(); if (tab) tab.innerHTML = u ? `Chat <span class="tabdot chat">${u}</span>` : "Chat";
+    const tagEl = $("#chat-tag");
+    if (chatTag) { const fake = chatTag.type === "property" ? { property_id: chatTag.id } : { destination_id: chatTag.id }; tagEl.hidden = false; tagEl.innerHTML = `Tagging: ${tagChip(fake)} <button type="button" class="btn small ghost" id="chat-untag">✕</button>`; $("#chat-untag").onclick = () => { chatTag = null; renderChat(); }; }
+    else { tagEl.hidden = true; tagEl.innerHTML = ""; }
+  }
+  function openPicker(type) {
+    const pk = $("#chat-picker"); pk.hidden = false; pk.dataset.type = type; const inp = $("#chat-search"); inp.value = ""; inp.placeholder = type === "property" ? "Search houses…" : "Search destinations…"; inp.focus(); fillPicker();
+  }
+  function fillPicker() {
+    const pk = $("#chat-picker"); const q = $("#chat-search").value.toLowerCase();
+    const items = pk.dataset.type === "property"
+      ? S.props.filter((p) => !q || (p.title + " " + (destOf(p)?.name || "")).toLowerCase().includes(q)).slice(0, 30).map((p) => `<button type="button" class="pick-item" data-pick="${p.id}">${esc(p.title)}<br><span class="s">${esc(destOf(p)?.name || "")} · ${p.total}/100</span></button>`)
+      : S.dests.filter((d) => !q || d.name.toLowerCase().includes(q)).map((d) => `<button type="button" class="pick-item" data-pick="${d.id}">${esc(d.name)}<br><span class="s">${d.total}/100</span></button>`);
+    $("#chat-picker-list").innerHTML = items.join("") || `<p class="empty">No match.</p>`;
+    $$("#chat-picker-list .pick-item").forEach((b) => b.onclick = () => { chatTag = { type: pk.dataset.type, id: b.dataset.pick }; pk.hidden = true; renderChat(); $("#chat-body").focus(); });
+  }
+  $("#chat-tag-btn").onclick = () => openPicker("property");
+  $("#chat-tagdest-btn").onclick = () => openPicker("destination");
+  $("#chat-search").oninput = fillPicker;
+  document.addEventListener("click", (e) => { const pk = $("#chat-picker"); if (!pk.hidden && !e.target.closest("#chat-picker,#chat-tag-btn,#chat-tagdest-btn")) pk.hidden = true; });
+  $("#chat-form").onsubmit = async (e) => {
+    e.preventDefault();
+    const body = $("#chat-body").value.trim(); if (!body) return;
+    const row = { user_id: S.session.user.id, body, property_id: chatTag?.type === "property" ? chatTag.id : null, destination_id: chatTag?.type === "destination" ? chatTag.id : null };
+    const btn = e.target.querySelector("button[type=submit]"); btn.disabled = true;
+    const { error } = await sb.from("messages").insert(row);
+    btn.disabled = false;
+    if (error) { toast(error.message, 5000); return; }
+    $("#chat-body").value = ""; chatTag = null; await loadAll(); renderAll();
+  };
+  $("#chat-body").addEventListener("keydown", (e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") $("#chat-form").requestSubmit(); });
+  function discussHouse(p) { chatTag = { type: "property", id: p.id }; closeModal(); showTab("chat"); renderChat(); $("#chat-body").focus(); }
+  function threadFor(p) {
+    const ms = S.msgs.filter((m) => m.property_id === p.id);
+    return `<div class="section-title">Chat about this house (${ms.length}) <button class="btn small" data-discuss="${p.id}">💬 Discuss in chat</button></div>
+      ${ms.length ? `<div class="thread-mini">${ms.slice(-4).map((m) => msgHtml(m, true)).join("")}${ms.length > 4 ? `<p class="tiny muted">…and ${ms.length - 4} more in the Chat tab.</p>` : ""}</div>` : ""}`;
   }
 
   // ---------- availability calendar ----------
