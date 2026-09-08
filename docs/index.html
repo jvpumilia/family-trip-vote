@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-<link rel="stylesheet" href="style.css?v=20260907221540">
+<link rel="stylesheet" href="style.css?v=20260907222120">
 </head>
 <body>
 <header class="top">
@@ -174,6 +174,12 @@
         </form>
         <form id="submit-form" class="stack" hidden>
           <p id="prefill-note" class="msg info" hidden></p>
+          <details id="paste-box" class="nominate" hidden>
+            <summary>Site blocked our reader? Paste the listing's text instead</summary>
+            <p class="muted tiny">On the listing page, select all the text, copy it, and paste it here. We'll pull out the town, rooms and beds.</p>
+            <textarea id="paste-text" rows="5" placeholder="Paste the whole page's text…"></textarea>
+            <button class="btn small" type="button" id="paste-go">Read the pasted text</button>
+          </details>
           <input type="hidden" name="url"><input type="hidden" name="image_url"><input type="hidden" name="description"><input type="hidden" name="rating"><input type="hidden" name="review_count">
           <label>Name of the house <input name="title" required></label>
           <div class="row">
@@ -265,7 +271,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="config.js?v=20260907221540"></script>
-<script src="app.js?v=20260907221540"></script>
+<script src="config.js?v=20260907222120"></script>
+<script src="app.js?v=20260907222120"></script>
 </body>
 </html>

@@ -186,6 +186,17 @@ Deno.serve(async (req) => {
       return json({ prefill: { ...s, text: undefined }, source: s.source });
     }
 
+    // 1b) The site blocked us; the person pasted the listing's text instead
+    if (action === "extract_text") {
+      const text = String(body.text || "").slice(0, 60000);
+      const url = body.url ? canonicalUrl(String(body.url).trim()) : "";
+      if (text.length < 80) return err("Paste more of the listing: the whole page text works best.");
+      const x = await extractListing(url || "pasted text", text);
+      if (!x) return err("Couldn't make sense of that text. Fill the fields in by hand.");
+      const description = [x.summary, x.bed_summary ? "Beds per room (from the page): " + x.bed_summary : "", x.amenities?.length ? "Amenities: " + x.amenities.join(", ") : "", "--- Pasted listing text (excerpt) ---", text.slice(0, 9000)].filter(Boolean).join("\n\n");
+      return json({ prefill: { ok: !!(x.city && x.bedrooms), url, title: x.title, city: x.city, state: stateAbbr(x.state) || x.state, bedrooms: x.bedrooms, bathrooms: x.bathrooms, sleeps: x.sleeps, price_night: x.price_night, price_total: x.price_total, description, photos: [], note: "Read from the text you pasted. Please double-check the town, bedrooms and bathrooms before saving." } });
+    }
+
     // 2) Confirmed details -> place it on the map, create the destination if new, save as pending
     if (action === "submit") {
       const city = String(body.city || "").trim();

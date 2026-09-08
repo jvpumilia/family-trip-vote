@@ -268,8 +268,8 @@
       ${travelTable(d)}<p class="tiny muted">Solid line = nonstop flight or drive; dashed = a connection. Hours are door to door.</p></div>`;
   }
   function travelTable(d) {
-    return `<table class="travel-table"><tr><th>From</th><th>Difficulty</th><th>Hours</th><th>Route</th></tr>` +
-      S.origins.map((o) => { const t = d.travel?.[o.key]; return `<tr><td>${esc(o.label)}</td><td>${t ? diffPill(t.difficulty, t.difficulty + "/10") : "—"}</td><td>${t ? t.hours : ""}</td><td>${t ? esc(t.route) + (t.notes ? ` <span class="muted">— ${esc(t.notes)}</span>` : "") : ""}</td></tr>`; }).join("") + `</table>`;
+    return `<div class="table-wrap"><table class="travel-table"><tr><th>From</th><th>Difficulty</th><th>Hours</th><th>Route</th></tr>` +
+      S.origins.map((o) => { const t = d.travel?.[o.key]; return `<tr><td>${esc(o.label)}</td><td>${t ? diffPill(t.difficulty, t.difficulty + "/10") : "—"}</td><td>${t ? t.hours : ""}</td><td>${t ? esc(t.route) + (t.notes ? ` <span class="muted">— ${esc(t.notes)}</span>` : "") : ""}</td></tr>`; }).join("") + `</table></div>`;
   }
 
   // ---------- destinations ----------
@@ -532,7 +532,8 @@
       const note = $("#prefill-note");
       note.hidden = !pre?.note; note.textContent = pre?.note || "";
       sf.url.value = pre?.url || "";  // server hands back the cleaned-up link
-      sf.dataset.prefillPhotos = JSON.stringify(pre?.photos || []); sf.image_url.value = pre?.image_url || ""; sf.description.value = pre?.description || "";
+      sf.dataset.prefillPhotos = JSON.stringify(pre?.photos || []);
+      const pb = $("#paste-box"); pb.hidden = !(pre?.url && !pre?.ok); pb.open = false; $("#paste-text").value = ""; sf.image_url.value = pre?.image_url || ""; sf.description.value = pre?.description || "";
       sf.rating.value = pre?.rating ?? ""; sf.review_count.value = pre?.review_count ?? "";
       sf.title.value = pre?.title || ""; sf.city.value = pre?.city || ""; sf.state.value = pre?.state || "";
       sf.bedrooms.value = pre?.bedrooms ?? ""; sf.bathrooms.value = pre?.bathrooms ?? ""; sf.sleeps.value = pre?.sleeps ?? "";
@@ -554,6 +555,17 @@
       b.disabled = false; b.textContent = "Read the listing";
     };
     $("#manual-btn").onclick = () => showSubmit({});
+    $("#paste-go").onclick = async () => {
+      const text = $("#paste-text").value.trim(); if (!text) return;
+      const b = $("#paste-go"); b.disabled = true; b.textContent = "Reading…";
+      try {
+        const { prefill } = await callFn("ingest", { action: "extract_text", url: sf.url.value, text });
+        const keepUrl = sf.url.value;
+        showSubmit({ ...prefill, url: keepUrl });
+        toast("Read it. Check the details, add the price, then save.");
+      } catch (err) { toast(err.message, 6000); }
+      b.disabled = false; b.textContent = "Read the pasted text";
+    };
     $("#cancel-submit").onclick = () => { sf.hidden = true; pf.hidden = false; $("#submit-progress").hidden = true; };
     sf.onsubmit = async (e) => {
       e.preventDefault();
