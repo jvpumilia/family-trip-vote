@@ -908,9 +908,16 @@
     if (availTouch) return "part";
     return "";
   }
+  const weekRange = (w) => `${weekLabel(w)} – ${new Date(w.end + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}`;
+  function weekTip(p, w) {
+    const st = weekStatus(p.id, w);
+    const label = st === "avail" ? "Open (confirmed)" : st === "booked" ? "Booked" : st === "part" ? "Partly open / partly booked" : "Nobody has checked this week";
+    const notes = S.avail.filter((x) => x.property_id === p.id && overlaps(x.start_date, x.end_date, w.start, w.end)).map((x) => `${x.status === "available" ? "open" : "booked"} ${fmtDate(x.start_date)}–${fmtDate(x.end_date)}${x.note ? `: ${x.note}` : ""} (${nameOf(x.created_by) || "?"})`);
+    return `Week of ${weekRange(w)}${isTripWeek(w) ? " · our target week" : ""}\n${label}${notes.length ? "\n" + notes.join("\n") : ""}`;
+  }
   const isTripWeek = (w) => { const t = S.settings.trip || {}; return !!(t.check_in && t.check_in >= w.start && t.check_in < w.end); };
   function strip(p) {
-    return `<div class="strip">${seasonWeeks().map((w) => `<div class="cell ${weekStatus(p.id, w)} ${isTripWeek(w) ? "trip" : ""}" title="${weekLabel(w)}"></div>`).join("")}</div>`;
+    return `<div class="strip">${seasonWeeks().map((w) => `<div class="cell ${weekStatus(p.id, w)} ${isTripWeek(w) ? "trip" : ""}" data-tip="${esc(weekTip(p, w))}"></div>`).join("")}</div>`;
   }
   function renderAvail() {
     const area = $("#avail-area");
@@ -929,9 +936,9 @@
       <div class="avail-wrap"><div class="avail-grid" style="grid-template-columns:230px repeat(${weeks.length},minmax(38px,1fr))">
         <div class="hdr"></div>${weeks.map((w) => `<div class="hdr ${isTripWeek(w) ? "trip" : ""}">${weekLabel(w)}</div>`).join("")}
         ${rows.map((p) => `<div class="rowlabel"><a href="#" data-open-prop="${p.id}">${esc(p.title.length > 34 ? p.title.slice(0, 33) + "…" : p.title)}</a><span class="s">${esc(destOf(p)?.name?.split(" / ")[0]?.split(":")[0] || "")} · ${p.total}${p.is_finalist ? " · ★" : ""}${p.ai_pick ? " · AI" : ""}${isDq(p) ? " · disqualified" : ""}</span></div>` +
-          weeks.map((w) => { const st = weekStatus(p.id, w); const notes = S.avail.filter((x) => x.property_id === p.id && overlaps(x.start_date, x.end_date, w.start, w.end)).map((x) => `${x.status} ${fmtDate(x.start_date)}–${fmtDate(x.end_date)}${x.note ? ": " + x.note : ""} (${nameOf(x.created_by) || "?"})`).join("\n"); return `<div class="cell ${st} ${isTripWeek(w) ? "trip" : ""} ${isDq(p) ? "dq" : ""}" data-open-prop="${p.id}" title="${esc(weekLabel(w) + (notes ? "\n" + notes : "\nNothing recorded"))}"></div>`; }).join("")).join("")}
+          weeks.map((w) => { const st = weekStatus(p.id, w); return `<div class="cell ${st} ${isTripWeek(w) ? "trip" : ""} ${isDq(p) ? "dq" : ""}" data-open-prop="${p.id}" data-tip="${esc(weekTip(p, w))}"></div>`; }).join("")).join("")}
       </div></div>
-      <p class="tiny muted">Hover a square for the details. Click a house name to add what you found on its calendar.</p>`;
+      <p class="tiny muted">Hover or tap a square to see the week and what was recorded. Click a house name to add what you found on its calendar.</p>`;
   }
   $("#avail-filter").onchange = renderAvail;
   $("#avail-only-known").onclick = (e) => { e.currentTarget.classList.toggle("on"); renderAvail(); };
@@ -1197,6 +1204,19 @@
   (() => { const h = $("#howto"); if (!h) return; try { h.open = localStorage.getItem("ftv_howto") !== "closed"; } catch { h.open = true; } h.addEventListener("toggle", () => { try { localStorage.setItem("ftv_howto", h.open ? "open" : "closed"); } catch { /* ignore */ } }); })();
 
   document.addEventListener("visibilitychange", () => { if (!document.hidden && S.tab === "chat" && S.session) markChatRead(); });
+
+  // instant tooltips for anything with data-tip (availability strips and grid)
+  (() => {
+    const tip = document.createElement("div"); tip.className = "tip"; tip.hidden = true; document.body.appendChild(tip);
+    let hideT;
+    const show = (el, x, y) => { tip.textContent = el.dataset.tip; tip.hidden = false; const r = tip.getBoundingClientRect(); const left = Math.min(Math.max(8, x - r.width / 2), innerWidth - r.width - 8); const top = y - r.height - 12 < 8 ? y + 16 : y - r.height - 12; tip.style.left = left + "px"; tip.style.top = top + "px"; };
+    const hide = () => { tip.hidden = true; };
+    document.addEventListener("mouseover", (e) => { const el = e.target.closest("[data-tip]"); if (!el) return; show(el, e.clientX, e.clientY); });
+    document.addEventListener("mousemove", (e) => { if (tip.hidden) return; const el = e.target.closest("[data-tip]"); if (!el) { hide(); return; } const r = tip.getBoundingClientRect(); tip.style.left = Math.min(Math.max(8, e.clientX - r.width / 2), innerWidth - r.width - 8) + "px"; tip.style.top = (e.clientY - r.height - 12 < 8 ? e.clientY + 16 : e.clientY - r.height - 12) + "px"; });
+    document.addEventListener("mouseout", (e) => { if (e.target.closest && e.target.closest("[data-tip]") && !(e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest("[data-tip]"))) hide(); });
+    document.addEventListener("touchstart", (e) => { const el = e.target.closest("[data-tip]"); if (!el) { hide(); return; } const t = e.touches[0]; show(el, t.clientX, t.clientY); clearTimeout(hideT); hideT = setTimeout(hide, 2500); }, { passive: true });
+    document.addEventListener("scroll", hide, { passive: true });
+  })();
 
   // kick off
   sb.auth.getSession().then(({ data: { session } }) => { S.session = session; if (session) boot(); else showAuth(); });
