@@ -21,7 +21,7 @@
     ["reviews", "Reviews", 10], ["logistics", "Parking & toddler logistics", 5],
   ];
 
-  const S = { session: null, profile: null, profiles: [], origins: [], dests: [], props: [], votes: [], settings: {}, avail: [], favs: new Set(), tab: "map", map: null, layers: {}, selectedDest: null, filter: "", sort: "total" };
+  const S = { session: null, profile: null, profiles: [], origins: [], dests: [], props: [], votes: [], settings: {}, avail: [], favs: new Set(), noms: [], tab: "map", map: null, layers: {}, selectedDest: null, filter: "", sort: "total" };
 
   // ---------- tiny UI helpers ----------
   let toastT;
@@ -121,7 +121,7 @@
 
   // ---------- data ----------
   async function loadAll() {
-    const [pr, o, d, p, v, st, av, fv] = await Promise.all([
+    const [pr, o, d, p, v, st, av, fv, nm] = await Promise.all([
       sb.from("profiles").select("*"),
       sb.from("origins").select("*").order("sort"),
       sb.from("destinations").select("*"),
@@ -130,7 +130,9 @@
       sb.from("settings").select("*"),
       sb.from("availability").select("*").order("start_date"),
       sb.from("favorites").select("property_id"),
+      sb.from("nominations").select("*"),
     ]);
+    S.noms = nm.data || [];
     S.avail = av.data || [];
     S.favs = new Set((fv.data || []).map((r) => r.property_id));
     S.profiles = pr.data || []; S.origins = o.data || []; S.dests = d.data || []; S.props = p.data || []; S.votes = v.data || [];
@@ -153,7 +155,8 @@
       S.channel = sb.channel("live").on("postgres_changes", { event: "*", schema: "public", table: "properties" }, refresh)
         .on("postgres_changes", { event: "*", schema: "public", table: "destinations" }, refresh)
         .on("postgres_changes", { event: "*", schema: "public", table: "votes" }, refresh)
-        .on("postgres_changes", { event: "*", schema: "public", table: "availability" }, refresh).subscribe();
+        .on("postgres_changes", { event: "*", schema: "public", table: "availability" }, refresh)
+        .on("postgres_changes", { event: "*", schema: "public", table: "nominations" }, refresh).subscribe();
     }
     renderAll();
     resumePendingAi();
@@ -327,7 +330,7 @@
     return `<div class="card prop-card ${isDq(p) ? "dq" : ""}" data-open-prop="${p.id}">
       <div class="thumb" style="${(p.photos?.[0] || p.image_url) ? `background-image:url('${esc(p.photos?.[0] || p.image_url)}')` : ""}"></div>
       ${favBtn(p, "card-fav")}
-      ${p.is_finalist ? `<span class="star">★ Finalist</span>` : p.ai_pick ? `<span class="star" style="background:#5b3fa8;color:#fff">AI Selected</span>` : aiMatchFor(p) ? `<span class="star" style="background:#1f7a8c;color:#fff">Matches AI Selected</span>` : ""}
+      ${p.is_finalist ? `<span class="star">★ On the ballot${nomsFor(p.id).length > 1 ? ` ×${nomsFor(p.id).length}` : ""}</span>` : p.ai_pick ? `<span class="star" style="background:#5b3fa8;color:#fff">AI Selected</span>` : aiMatchFor(p) ? `<span class="star" style="background:#1f7a8c;color:#fff">Matches AI Selected</span>` : ""}
       ${pending ? `<i class="pill neutral badge">scoring…</i>` : (p.gate_pass ? `<i class="pill ok badge">Sleeps us right ✓</i>` : `<i class="pill warn badge">Bed plan short ✗</i>`)}
       <div class="body">
         <div class="title">${esc(p.title)}</div>
@@ -393,7 +396,9 @@
         ${!isDq(p) ? `<button class="btn small danger" data-avail="${p.id}" data-status="unavailable">✗ Not available: disqualify</button>` : `<button class="btn small" data-avail="${p.id}" data-status="unknown">Undo disqualification</button>`}
       </div>
       ${availSection(p)}
-      ${p.ai_pick ? `<div class="section-title">Why Claude recommends it <i class="pill ai">AI Selected</i></div><p>${esc(p.ai_note || "")}</p>${familyMatchesFor(p).length ? `<p class="msg ok">Also picked by ${familyMatchesFor(p).map((m) => esc(householdOf(m.submitted_by))).filter((v, i, a) => a.indexOf(v) === i).join(", ")}.</p>` : ""}<div class="actions"><button class="btn primary small" data-adopt="${p.id}">Adopt as one of my household's houses</button></div>` : ""}
+      <div class="section-title">Ballot ${nomsFor(p.id).length ? nomPills(p) : '<i class="pill neutral">not nominated yet</i>'}</div>
+      <div class="actions">${p.status === "scored" && !isDq(p) ? `<button class="btn ${nominatedByMe(p.id) ? "" : "primary"} small" data-star="${p.id}" ${nominationsLocked() ? "disabled" : ""}>${nominatedByMe(p.id) ? "Withdraw my household's nomination" : "★ Nominate for my household"}</button>` : ""}<span class="muted tiny" style="align-self:center">Each household gets ${S.settings.voting?.max_finalists_per_household ?? 2} nominations. A house nominated by several households is on the ballot once.</span></div>
+      ${p.ai_pick ? `<div class="section-title">Why Claude recommends it <i class="pill ai">AI Selected</i></div><p>${esc(p.ai_note || "")}</p>` : ""}
       ${!p.ai_pick && aiMatchFor(p) ? `<p class="msg ok"><i class="pill match">Matches an AI Selected house</i> Claude independently recommended this same house. <a href="#" data-open-prop="${aiMatchFor(p).id}">See its note</a>.</p>` : ""}
       ${p.notes ? `<div class="section-title">Notes from whoever added it</div><p>${esc(p.notes)}</p>` : ""}
       ${p.description ? `<details class="quiet"><summary>Listing description</summary><p>${esc(p.description)}</p></details>` : ""}
@@ -410,20 +415,77 @@
   function renderMine() {
     const hh = S.profile.household;
     const mine = S.props.filter((p) => householdOf(p.submitted_by) === hh);
-    const fin = mine.filter((p) => p.is_finalist);
+    const fin = myNoms().map((n) => S.props.find((p) => p.id === n.property_id)).filter(Boolean);
     const cap = S.settings.voting?.max_finalists_per_household ?? 2;
     const lock = nomLock();
     const lockLine = lock ? (nominationsLocked() ? `<br><span class="pill warn">Nominations closed ${fmtDateTime(lock)}</span> <span class="muted">The ballot is set. You can still vote.</span>` : `<br><span class="muted tiny">Add houses and set your finalists by <b>${fmtDateTime(lock)}</b>. After that the ballot is locked and voting runs until ${fmtDateTime(S.settings.voting?.closes)}.</span>`) : "";
-    $("#finalist-meter").innerHTML = `<b>${esc(hh)}</b> · ${mine.length} house${mine.length === 1 ? "" : "s"} added · <b>${fin.length} of ${cap}</b> finalists starred ${fin.length < cap ? `<span class="muted">— star ${cap - fin.length} more to fill your slots</span>` : `<span class="muted">— all set</span>`}${lockLine}`;
+    const favPool = S.props.filter((p) => isFav(p) && p.status === "scored" && !isDq(p) && !nominatedByMe(p.id));
+    $("#finalist-meter").innerHTML = `<b>${esc(hh)}</b> · ${mine.length} house${mine.length === 1 ? "" : "s"} added · <b>${fin.length} of ${cap}</b> nominations ${fin.length < cap ? `<span class="muted">— nominate ${cap - fin.length} more (any house on the site: yours, an AI pick, or another family's find)</span>` : `<span class="muted">— all set</span>`}${lockLine}
+      <div class="nom-list">${fin.length ? fin.map((p) => `<div class="win-row"><i class="pill sun">★</i><span><a href="#" data-open-prop="${p.id}">${esc(p.title)}</a> <span class="muted tiny">${esc(destOf(p)?.name || "")} · ${p.total}/100${nomsFor(p.id).length > 1 ? ` · also nominated by ${nomsFor(p.id).filter((n) => n.household !== hh).map((n) => esc(n.household.split(",")[0])).join(", ")}` : ""}</span></span><button class="btn small ghost" data-star="${p.id}" ${nominationsLocked() ? "disabled" : ""}>Withdraw</button></div>`).join("") : `<p class="empty">No nominations yet.</p>`}</div>
+      ${fin.length < cap && !nominationsLocked() ? `<div class="actions"><button class="btn small" id="spin-nom" ${favPool.length ? "" : "disabled"} title="${favPool.length ? "" : "Save some favorites first (the ♡ on any house)"}">🎲 Can't decide? Spin ${cap - fin.length === 1 ? "one" : "two"} of my ${favPool.length} favorite${favPool.length === 1 ? "" : "s"}</button></div>` : ""}`;
+    const spin = $("#spin-nom");
+    if (spin) spin.onclick = () => roulette(favPool, cap - fin.length, "Nominate", async (picked) => { for (const p of picked) await nominate(p.id, true); toast(`Nominated: ${picked.map((p) => p.title).join(" and ")}.`, 6000); });
     $$("#preview-form button, #submit-form button, form.nominate-form button, [data-adopt]").forEach((b) => { if (nominationsLocked()) { b.disabled = true; b.title = "Nominations are closed"; } });
-    $("#mine-list").innerHTML = mine.length ? mine.map((p) => `<div class="card mine-item">
+    $("#mine-list").innerHTML = (mine.length ? `<h3 style="margin:.6em 0 .3em">Houses my household added</h3>` : "") + (mine.length ? mine.map((p) => `<div class="card mine-item">
       <div><div class="title" style="font-weight:600"><a href="#" data-open-prop="${p.id}">${esc(p.title)}</a></div>
       <div class="meta muted tiny">${esc(destOf(p)?.name || p.city)} · ${p.bedrooms ?? "?"} BR · ${p.status === "scored" ? p.total + "/100" : "scoring…"} ${p.status === "scored" && !p.gate_pass ? '· <i class="pill warn">bed plan ✗</i>' : ""} ${availBadge(p, true)} · added by ${esc(nameOf(p.submitted_by))}</div></div>
-      <div class="actions">${favBtn(p, "inline")}<button class="star-btn ${p.is_finalist ? "on" : ""}" data-star="${p.id}" ${p.status !== "scored" || nominationsLocked() ? "disabled" : ""}>${p.is_finalist ? "★ Finalist" : "☆ Make finalist"}</button></div>
-    </div>`).join("") : `<p class="empty">Your household hasn't added a house yet.</p>`;
+      <div class="actions">${favBtn(p, "inline")}<button class="star-btn ${nominatedByMe(p.id) ? "on" : ""}" data-star="${p.id}" ${p.status !== "scored" || nominationsLocked() ? "disabled" : ""}>${nominatedByMe(p.id) ? "★ Nominated" : "☆ Nominate"}</button></div>
+    </div>`).join("") : `<p class="empty">Your household hasn't added a house yet. You can still nominate any house on the Lodging or AI Selected tabs.</p>`);
   }
 
+  // ---------- roulette ----------
+  function roulette(pool, count, verb, onDone) {
+    if (!pool.length) return;
+    const n = Math.min(count, pool.length);
+    const shuffled = pool.slice().sort(() => Math.random() - 0.5);
+    const picked = shuffled.slice(0, n);
+    openModal(`<h2>🎲 Spinning…</h2><p class="muted">Picking ${n} at random from ${pool.length}.</p><div id="wheel" class="wheel"></div><div id="wheel-result" hidden></div>`);
+    const wheel = $("#wheel"); let ticks = 0;
+    const iv = setInterval(() => {
+      const r = pool[Math.floor(Math.random() * pool.length)];
+      wheel.innerHTML = `<div class="wheel-item">${esc(r.title)}<br><span class="muted tiny">${esc(destOf(r)?.name || "")} · ${r.total}/100</span></div>`;
+      if (++ticks > 18) {
+        clearInterval(iv);
+        wheel.innerHTML = picked.map((p) => `<div class="wheel-item on">${esc(p.title)}<br><span class="muted tiny">${esc(destOf(p)?.name || "")} · ${p.total}/100</span></div>`).join("");
+        const res = $("#wheel-result"); res.hidden = false;
+        res.innerHTML = `<div class="actions" style="margin-top:1em"><button class="btn primary" id="wheel-ok">${esc(verb)} ${n === 1 ? "this one" : "these"}</button><button class="btn" id="wheel-again">Spin again</button><button class="btn ghost" id="wheel-cancel">Cancel</button></div>`;
+        $("#wheel-ok").onclick = async () => { closeModal(); await onDone(picked); };
+        $("#wheel-again").onclick = () => roulette(pool, count, verb, onDone);
+        $("#wheel-cancel").onclick = closeModal;
+      }
+    }, 110);
+  }
+
+  const nomsFor = (pid) => S.noms.filter((n) => n.property_id === pid);
+  const myNoms = () => S.noms.filter((n) => n.household === S.profile.household);
+  const nominatedByMe = (pid) => myNoms().some((n) => n.property_id === pid);
+  const nomPills = (p) => nomsFor(p.id).map((n) => `<i class="pill sun" title="Nominated by ${esc(n.household)}">★ ${esc(n.household.split(",")[0])}</i>`).join(" ");
+  async function nominate(pid, quiet) {
+    const p = S.props.find((x) => x.id === pid); if (!p) return false;
+    if (isDq(p)) { toast("This house is marked not available for our week, so it can't be nominated.", 6000); return false; }
+    if (!quiet && p.avail_status === "unknown" && !confirm(`Nobody has confirmed this house is available for ${tripWeek()}. Nominate it anyway? (Please check the host's calendar soon and mark it in the house details.)`)) return false;
+    const { error } = await sb.from("nominations").insert({ household: S.profile.household, property_id: pid, nominated_by: S.session.user.id });
+    if (error) {
+      if (/finalist_cap/.test(error.message)) toast("Your household already has its two nominations. Withdraw one first.", 5000);
+      else if (/nominations_locked/.test(error.message)) toast("Nominations are closed; the ballot is set.", 4500);
+      else if (/disqualified/.test(error.message)) toast("This house is disqualified (not available).", 4500);
+      else if (/duplicate key/.test(error.message)) toast("Your household already nominated this house.", 4000);
+      else toast(error.message, 5000);
+      return false;
+    }
+    if (!quiet) toast(nomsFor(pid).length ? "Nominated. Another household had it too; it stays on the ballot once." : "Nominated. It's on the ballot for the whole family.");
+    await loadAll(); renderAll(); return true;
+  }
+  async function withdraw(pid) {
+    const { error } = await sb.from("nominations").delete().eq("household", S.profile.household).eq("property_id", pid);
+    if (error) { toast(/nominations_locked/.test(error.message) ? "Nominations are closed; the ballot is set." : error.message, 5000); return; }
+    toast("Withdrawn."); await loadAll(); renderAll();
+  }
   async function toggleFinalist(id) {
+    if (nominatedByMe(id)) return withdraw(id);
+    return nominate(id);
+  }
+  async function toggleFinalistLegacy(id) {
     const p = S.props.find((x) => x.id === id);
     if (!p.is_finalist && isDq(p)) { toast("This house is marked not available for our week, so it can't be a finalist. Undo that in its details if it's wrong.", 6000); return; }
     if (!p.is_finalist && p.avail_status === "unknown" && !confirm(`Nobody has confirmed this house is available for ${tripWeek()}. Star it anyway? (Please check the host's calendar soon and mark it in the house details.)`)) return;
@@ -665,6 +727,7 @@
 
   // ---------- vote ----------
   function finalists() { return S.props.filter((p) => p.is_finalist && p.status === "scored" && !isDq(p)); }
+  const minRanked = () => Number(S.settings.voting?.min_ranked) || 1;
   let ranking = null; // array of property ids (local editing state)
   function renderVote() {
     const area = $("#vote-area");
@@ -683,15 +746,17 @@
       <div><div class="t"><a href="#" data-open-prop="${p.id}">${esc(p.title)}</a> ${p.gate_pass ? "" : '<i class="pill warn">gate ✗</i>'}</div><div class="s">${esc(destOf(p)?.name || "")} · ${p.bedrooms ?? "?"} BR · ${p.total}/100${p.price_night ? " · " + money(p.price_night) + "/night" : ""}</div></div>
       <div class="ctl">${inRank ? `<button data-mv="${p.id}" data-dir="-1" title="Move up" ${!open ? "disabled" : ""}>▲</button><button data-mv="${p.id}" data-dir="1" title="Move down" ${!open ? "disabled" : ""}>▼</button><button data-rm="${p.id}" title="Remove" ${!open ? "disabled" : ""}>✕</button>` : `<button data-add="${p.id}" title="Add to my ranking" ${!open ? "disabled" : ""}>＋</button>`}</div></div>`;
     html += `<div class="ballot">
-      <div class="card"><h3>My ranking</h3><p class="muted tiny">1 = the house I most want us to book. You don't have to rank them all, but a house you leave out gets no points from you.</p>
+      <div class="card"><h3>My ranking</h3><p class="muted tiny">1 = the house I most want us to book. ${minRanked() > 1 ? `Rank at least ${Math.min(minRanked(), fin.length)}.` : "You don't have to rank them all, but"} A house you leave out gets no points from you.</p>
         <div class="rank-list">${ranking.length ? ranking.map((id, i) => item(fin.find((p) => p.id === id), i, true)).join("") : `<p class="empty">Tap ＋ on a house to start your ranking.</p>`}</div>
-        <div class="actions"><button class="btn primary" id="save-vote" ${!open || !ranking.length ? "disabled" : ""}>${myVote ? "Update my vote" : "Cast my vote"}</button>${myVote ? `<span class="muted tiny" style="align-self:center">Last saved ${fmtDateTime(myVote.updated_at)}</span>` : ""}</div></div>
+        <div class="actions"><button class="btn primary" id="save-vote" ${!open || ranking.length < Math.min(minRanked(), fin.length) ? "disabled" : ""}>${myVote ? "Update my vote" : "Cast my vote"}</button>${open ? `<button class="btn" id="spin-vote" title="Fills your ranking in a random order; you can still adjust it before casting">🎲 Can't decide? Spin</button>` : ""}${myVote ? `<span class="muted tiny" style="align-self:center">Last saved ${fmtDateTime(myVote.updated_at)}</span>` : ""}</div></div>
       <div class="card"><h3>On the ballot</h3><p class="muted tiny">Every starred finalist, best score first.</p>
         <div class="rank-list">${unranked.length ? unranked.map((p) => item(p, 0, false)).join("") : `<p class="empty">You've ranked them all.</p>`}</div></div></div>`;
     area.innerHTML = html;
     $$("[data-add]", area).forEach((b) => b.onclick = () => { ranking.push(b.dataset.add); renderVote(); });
     $$("[data-rm]", area).forEach((b) => b.onclick = () => { ranking = ranking.filter((x) => x !== b.dataset.rm); renderVote(); });
     $$("[data-mv]", area).forEach((b) => b.onclick = () => { const i = ranking.indexOf(b.dataset.mv), j = i + Number(b.dataset.dir); if (j < 0 || j >= ranking.length) return; [ranking[i], ranking[j]] = [ranking[j], ranking[i]]; renderVote(); });
+    const spinV = $("#spin-vote");
+    if (spinV) spinV.onclick = () => roulette(fin, 1, "Rank first", (picked) => { const first = picked[0].id; const rest = fin.filter((p) => p.id !== first).map((p) => p.id).sort(() => Math.random() - 0.5); ranking = [first, ...rest]; renderVote(); toast("Random ranking filled in. Adjust if you like, then cast your vote.", 6000); });
     const save = $("#save-vote");
     if (save) save.onclick = async () => {
       save.disabled = true;
@@ -744,11 +809,11 @@
         <div class="title-row"><h3>${rank ? `#${rank} ` : ""}<a href="#" data-open-prop="${p.id}">${esc(p.title)}</a> <i class="pill ai">AI Selected</i> ${favBtn(p, "inline")}</h3><span class="mini-score">${p.status === "scored" ? p.total : "…"}<small>/100</small></span></div>
         <div class="muted tiny">${esc(d?.name || "")} · ${p.bedrooms ?? "?"} BR · ${p.bathrooms ?? "?"} BA · sleeps ${p.sleeps ?? "?"}${p.price_night ? " · " + money(p.price_night) + "/night" : ""}${p.rating ? ` · ★ ${p.rating}${p.review_count ? ` (${p.review_count})` : ""}` : ""}
           ${p.gate_pass ? '<i class="pill ok">sleeps us right ✓</i>' : '<i class="pill warn">bed plan short ✗</i>'} ${availBadge(p, true)} ${p.elevation_ft > maxElev() ? elevPill(p.elevation_ft) : ""}
-          ${matches.length ? `<i class="pill match">Also picked by ${matches.map((m) => esc(householdOf(m.submitted_by))).filter((v, i, a) => a.indexOf(v) === i).join(", ")}</i>` : ""}</div>
+          ${nomsFor(p.id).length ? nomPills(p) : ""}</div>
         <p>${esc(p.ai_note || p.ai_summary || "")}</p>
         ${det.bed_plan ? `<p class="tiny"><b>Beds:</b> ${esc(det.bed_plan)}</p>` : ""}
         ${(p.red_flags || []).length ? `<p class="tiny"><b>Watch:</b> ${p.red_flags.slice(0, 3).map(esc).join(" · ")}</p>` : ""}
-        <div class="actions"><button class="btn small" data-open-prop="${p.id}">Full scorecard</button>${p.url ? `<a class="btn small" href="${esc(p.url)}" target="_blank" rel="noopener">Open listing ↗</a>` : ""}<button class="btn small primary" data-adopt="${p.id}">Adopt as my pick</button></div>
+        <div class="actions"><button class="btn small" data-open-prop="${p.id}">Full scorecard</button>${p.url ? `<a class="btn small" href="${esc(p.url)}" target="_blank" rel="noopener">Open listing ↗</a>` : ""}${p.status === "scored" && !isDq(p) ? `<button class="btn small ${nominatedByMe(p.id) ? "" : "primary"}" data-star="${p.id}" ${nominationsLocked() ? "disabled" : ""}>${nominatedByMe(p.id) ? "Withdraw nomination" : "★ Nominate"}</button>` : ""}</div>
       </div></div>`;
   }
   function renderRecs() {
@@ -771,27 +836,44 @@
   }
 
   // ---------- results ----------
+  /**
+   * How much one person's ballot counts. The family's rule (settings.voting.vote_weighting):
+   *   "person"    - every adult's ballot counts 1
+   *   "household" - each household counts 1 in total, split evenly among the adults in it who voted
+   * TODO(human): decide the rule and implement it here. `voter` is the profile of the person who cast the ballot;
+   * `hhVoters` is how many people in that voter's household cast a ballot; `mode` is the setting above.
+   * Return a number (1 = a full vote).
+   */
+  function voteWeight(voter, hhVoters, mode) {
+    return mode === "household" ? 1 / Math.max(1, hhVoters) : 1;
+  }
   function tally() {
     const fin = finalists();
     const ids = fin.map((p) => p.id);
-    const ballots = S.votes.map((v) => (v.ranking || []).filter((id) => ids.includes(id))).filter((b) => b.length);
+    const mode = S.settings.voting?.vote_weighting || "household";
+    const hhCount = {}; S.votes.forEach((v) => { const h = householdOf(v.user_id); if (h) hhCount[h] = (hhCount[h] || 0) + 1; });
+    const ballots = S.votes.map((v) => { const voter = S.profiles.find((p) => p.id === v.user_id); return { r: (v.ranking || []).filter((id) => ids.includes(id)), w: voter ? voteWeight(voter, hhCount[voter.household] || 1, mode) : 0, hh: voter?.household }; }).filter((b) => b.r.length && b.w > 0);
     const n = ids.length;
     const borda = Object.fromEntries(ids.map((id) => [id, 0]));
     const first = Object.fromEntries(ids.map((id) => [id, 0]));
-    ballots.forEach((b) => { b.forEach((id, i) => (borda[id] += n - i)); first[b[0]]++; });
-    // instant runoff
+    ballots.forEach((b) => { b.r.forEach((id, i) => (borda[id] += (n - i) * b.w)); first[b.r[0]] += b.w; });
+    const scoreOf = (id) => fin.find((p) => p.id === id)?.total || 0;
+    // instant runoff on weighted ballots; ties broken by points, then by the house's score
     let alive = new Set(ids), rounds = [], winner = null;
     while (alive.size) {
       const counts = Object.fromEntries([...alive].map((id) => [id, 0]));
       let active = 0;
-      ballots.forEach((b) => { const top = b.find((id) => alive.has(id)); if (top) { counts[top]++; active++; } });
+      ballots.forEach((b) => { const top = b.r.find((id) => alive.has(id)); if (top) { counts[top] += b.w; active += b.w; } });
       rounds.push(counts);
-      const sorted = [...alive].sort((a, b) => counts[b] - counts[a] || borda[b] - borda[a]);
+      const sorted = [...alive].sort((a, b) => counts[b] - counts[a] || borda[b] - borda[a] || scoreOf(b) - scoreOf(a));
       if (!active || alive.size === 1 || counts[sorted[0]] > active / 2) { winner = sorted[0]; break; }
       const loser = sorted[sorted.length - 1];
       alive.delete(loser);
     }
-    return { fin, ballots, borda, first, rounds, winner };
+    const round1 = (v) => Math.round(v * 100) / 100;
+    Object.keys(borda).forEach((k) => (borda[k] = round1(borda[k]))); Object.keys(first).forEach((k) => (first[k] = round1(first[k])));
+    rounds = rounds.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, round1(v)])));
+    return { fin, ballots: ballots.map((b) => b.r), weighted: ballots, borda, first, rounds, winner, mode };
   }
   /** points each household gave each house, plus every person's ranking */
   function householdTally(rows, ballots) {
@@ -802,7 +884,8 @@
     S.votes.forEach((v) => {
       const hh = householdOf(v.user_id); if (!hh) return;
       const r = (v.ranking || []).filter((id) => rows.some((p) => p.id === id));
-      r.forEach((id, i) => { pts[id] = pts[id] || {}; pts[id][hh] = (pts[id][hh] || 0) + (n - i); });
+      const w = voteWeight(S.profiles.find((p) => p.id === v.user_id) || {}, S.votes.filter((x) => householdOf(x.user_id) === hh).length, S.settings.voting?.vote_weighting || "household");
+      r.forEach((id, i) => { pts[id] = pts[id] || {}; pts[id][hh] = Math.round(((pts[id][hh] || 0) + (n - i) * w) * 100) / 100; });
       voterRows.push({ hh, name: nameOf(v.user_id), r });
     });
     const hhVoted = (h) => S.votes.filter((v) => householdOf(v.user_id) === h).length;
@@ -819,7 +902,7 @@
     const voters = S.votes.map((v) => nameOf(v.user_id)).filter(Boolean);
     const who = `<div class="notice"><b>${S.votes.length} of ${S.profiles.length}</b> have voted${voters.length ? ": " + voters.map(esc).join(", ") : ""}.${votingOpen() ? "" : " Voting is closed."}</div>`;
     if (!pub && !isAdmin()) { area.innerHTML = who + `<p class="empty">Results stay hidden until Joseph opens them, so nobody votes based on the running score.</p>`; return; }
-    const { fin, ballots, borda, first, rounds, winner } = tally();
+    const { fin, ballots, borda, first, rounds, winner, mode } = tally();
     if (!fin.length || !ballots.length) { area.innerHTML = who + `<p class="empty">No votes on the ballot yet.</p>`; return; }
     const rows = fin.slice().sort((a, b) => borda[b.id] - borda[a.id]);
     const byDest = {};
@@ -827,7 +910,7 @@
     area.innerHTML = who + (!pub && isAdmin() ? `<p class="msg info">Only you can see this right now. Flip "results public" on the Admin tab to show everyone.</p>` : "") +
       `<div class="table-wrap"><table class="results-table"><tr><th>House</th><th>Destination</th><th>1st choices</th><th>Points</th><th>Final round</th></tr>` +
       rows.map((p) => `<tr class="${p.id === winner ? "winner" : ""}"><td>${p.id === winner ? "🏆 " : ""}<a href="#" data-open-prop="${p.id}">${esc(p.title)}</a></td><td>${esc(destOf(p)?.name || "")}</td><td>${first[p.id]}</td><td>${borda[p.id]}</td><td>${rounds[rounds.length - 1][p.id] ?? "—"}</td></tr>`).join("") + `</table></div>
-      <p class="tiny muted">Points: with ${fin.length} houses on the ballot, a 1st-place rank is worth ${fin.length}, 2nd is ${fin.length - 1}, and so on. "Final round" is the instant-runoff count after the weakest houses were eliminated (${rounds.length} round${rounds.length > 1 ? "s" : ""}).</p>
+      <p class="tiny muted">Points: with ${fin.length} houses on the ballot, a 1st-place rank is worth ${fin.length}, 2nd is ${fin.length - 1}, and so on. ${mode === "household" ? "Each household counts once: when two people in a household vote, their ballots count half each." : "Every adult's ballot counts once."} "Final round" is the instant-runoff count after the weakest houses were eliminated (${rounds.length} round${rounds.length > 1 ? "s" : ""}). Ties break on points, then on the house's score.</p>
       <div class="section-title">By destination (points)</div><div class="table-wrap"><table class="results-table">${Object.entries(byDest).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v}</td></tr>`).join("")}</table></div>
       ${householdTally(rows, ballots)}`;
   }
@@ -844,7 +927,9 @@
         <label class="switch"><input type="checkbox" id="adm-public" ${v.results_public ? "checked" : ""}> Results visible to everyone</label>
         <label>Nominations lock (your local time) <input type="datetime-local" id="adm-nomclose" value="${v.nominations_close ? toLocalInput(v.nominations_close) : ""}"></label>
         <label>Voting closes (your local time) <input type="datetime-local" id="adm-closes" value="${closesLocal}"></label>
-        <label>Finalists per household <input type="number" id="adm-cap" min="1" max="5" value="${v.max_finalists_per_household ?? 2}"></label>
+        <label>Nominations per household <input type="number" id="adm-cap" min="1" max="5" value="${v.max_finalists_per_household ?? 2}"></label>
+        <label>Vote counting <select id="adm-weight"><option value="household" ${(v.vote_weighting || "household") === "household" ? "selected" : ""}>Each household counts once (split among its voters)</option><option value="person" ${v.vote_weighting === "person" ? "selected" : ""}>Each adult counts once</option></select></label>
+        <label>Each ballot must rank at least <input type="number" id="adm-minrank" min="1" max="10" value="${v.min_ranked ?? 1}"></label>
         <div class="row"><label>Trip check-in <input type="date" id="adm-checkin" value="${S.settings.trip?.check_in || ""}"></label><label>Trip check-out <input type="date" id="adm-checkout" value="${S.settings.trip?.check_out || ""}"></label></div>
         <button class="btn primary" id="adm-save">Save voting settings</button>
         <p class="tiny muted">Family code for new accounts is set on the server (INVITE_CODE). Current: <b>JUNE2027FAM</b> unless you changed it.</p>
@@ -858,7 +943,7 @@
     $("#adm-save").onclick = async () => {
       const closes = $("#adm-closes").value ? new Date($("#adm-closes").value).toISOString() : null;
       const nominations_close = $("#adm-nomclose").value ? new Date($("#adm-nomclose").value).toISOString() : null;
-      const value = { ...v, open: $("#adm-open").checked, results_public: $("#adm-public").checked, closes, nominations_close, max_finalists_per_household: Number($("#adm-cap").value) || 2 };
+      const value = { ...v, open: $("#adm-open").checked, results_public: $("#adm-public").checked, closes, nominations_close, max_finalists_per_household: Number($("#adm-cap").value) || 2, vote_weighting: $("#adm-weight").value, min_ranked: Number($("#adm-minrank").value) || 1 };
       const { error } = await sb.from("settings").upsert({ key: "voting", value });
       const trip = { ...(S.settings.trip || {}), check_in: $("#adm-checkin").value || null, check_out: $("#adm-checkout").value || null };
       const { error: e2 } = await sb.from("settings").upsert({ key: "trip", value: trip });

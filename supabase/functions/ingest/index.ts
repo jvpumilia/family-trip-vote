@@ -289,6 +289,9 @@ Deno.serve(async (req) => {
 
     // 3b) Adopt a system recommendation as one of my household's houses (a copy under my name)
     if (action === "adopt") {
+      return err("Adopting is no longer needed: nominate the house directly for your household.", 410);
+    }
+    if (action === "adopt_legacy") {
       const { data: src } = await admin.from("properties").select("*").eq("id", body.property_id).maybeSingle();
       if (!src || !src.ai_pick) return err("Only recommendations can be adopted.", 400);
       const { data: dup } = await admin.from("properties").select("id").eq("adopted_from", src.id).eq("submitted_by", user.id).maybeSingle();
