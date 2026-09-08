@@ -608,7 +608,7 @@
       else if (t.dataset.avail) {
         const status = t.dataset.status;
         let note = "";
-        if (status === "unavailable") { note = prompt("What did you find? (e.g. 'Host calendar shows booked June 5–12', 'Owner said 3-night max'). This disqualifies the house from the ballot."); if (note === null) return; }
+        if (status === "unavailable") { note = prompt("What did you find on the host's calendar or from the host? (e.g. 'Booked June 5–12', 'Owner said 3-night max'). Disqualification is only for availability; this takes the house off the ballot."); if (note === null) return; if (!note.trim()) { toast("Please say what you found; that's the record for the family."); return; } }
         else if (status === "available") { note = prompt("Optional: how you confirmed it (e.g. 'Called host 9/8, open for our week, $9,800').") || ""; }
         if (await setAvailability(t.dataset.avail, status, note)) { const p = S.props.find((x) => x.id === t.dataset.avail); if (p) propModal(p); toast(status === "unavailable" ? "Disqualified. It's off the ballot and can't be starred." : status === "available" ? "Marked available. Thank you for checking." : "Disqualification removed."); }
       }
@@ -842,12 +842,9 @@
 
   // ---------- results ----------
   /**
-   * How much one person's ballot counts. The family's rule (settings.voting.vote_weighting):
-   *   "person"    - every adult's ballot counts 1
-   *   "household" - each household counts 1 in total, split evenly among the adults in it who voted
-   * TODO(human): decide the rule and implement it here. `voter` is the profile of the person who cast the ballot;
-   * `hhVoters` is how many people in that voter's household cast a ballot; `mode` is the setting above.
-   * Return a number (1 = a full vote).
+   * How much one person's ballot counts. The family's rule (settings.voting.vote_weighting), agreed 2026-09-07:
+   *   "household" (the standing rule) - each household counts 1 in total, split evenly among the adults in it who voted
+   *   "person"                       - every adult's ballot counts 1
    */
   function voteWeight(voter, hhVoters, mode) {
     return mode === "household" ? 1 / Math.max(1, hhVoters) : 1;

@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-<link rel="stylesheet" href="style.css?v=20260907210653">
+<link rel="stylesheet" href="style.css?v=20260907211422">
 </head>
 <body>
 <header class="top">
@@ -78,7 +78,18 @@
             <li><b>Save favorites.</b> Tap the ♡ on any house to keep it in your own favorites list (nobody else sees it). The Lodging and Availability tabs have a "My favorites" filter.</li>
             <li><b>Check availability.</b> The site can't read a host's calendar, so when you look at one, open the house and record the weeks you saw open or booked. The Availability tab lines every house up across May 1 to Aug 20 so we can see who is open when. "Not available for our week" disqualifies a house from the ballot.</li>
             <li><b>Nominate two.</b> Each household nominates the two houses it is actually recommending, from anything on the site: its own finds, an AI Selected house, or another family's. Only nominated houses go on the ballot, so a destination with no nominated house can't be voted on. If two households nominate the same house it appears once and the votes aren't split. Can't decide? The 🎲 button on My picks nominates two of your favorites at random.</li>
-            <li><b>Vote.</b> Nominations lock on <b>Sept 21</b> so the ballot is fixed. Then rank the nominated houses from your favorite down; ranked-choice, changeable any time before voting closes <b>Sept 28</b>. Each household counts once in the tally (two voters in a household count half each). A 🎲 on the Vote tab fills a random ranking if you truly can't choose. We book the winner right after, because 7-bedroom houses for June go fast.</li>
+            <li><b>Vote.</b> Nominations lock on <b>Sept 21</b> so the ballot is fixed. Then rank the nominated houses from your favorite down (at least three); ranked-choice, changeable any time before voting closes <b>Sept 28</b>. A 🎲 on the Vote tab fills a random ranking if you truly can't choose. We book the winner right after, because 7-bedroom houses for June go fast.</li>
+          </ol>
+          <div class="section-title">The voting rules, agreed up front</div>
+          <ul class="list">
+            <li><b>Every adult votes; every household counts once.</b> If two people in a household both vote, their ballots count half each.</li>
+            <li><b>Rank at least three.</b> A house you leave off gets no points from you.</li>
+            <li><b>Counting.</b> Instant runoff: the house with the fewest first choices is dropped and those ballots move to their next choice, until one house has a majority. Ties break on total points, then on the house's score.</li>
+            <li><b>Results are final at the deadline.</b> No extensions for a household that doesn't vote.</li>
+            <li><b>If the winner can't be booked</b> when we call, the next house in the final ranking is the pick. No re-vote.</li>
+            <li><b>Disqualification is only for availability.</b> A house leaves the ballot only when someone confirms it isn't available for our week, never for taste.</li>
+          </ul>
+          <ol class="list" hidden>
           </ol>
           <p class="tiny muted">Houses show who added them only in a small "More" line at the bottom of the detail view, so people judge the house, not the person. Results stay hidden until Joseph opens them.</p>
         </div>
@@ -252,7 +263,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="config.js?v=20260907210653"></script>
-<script src="app.js?v=20260907210653"></script>
+<script src="config.js?v=20260907211422"></script>
+<script src="app.js?v=20260907211422"></script>
 </body>
 </html>
