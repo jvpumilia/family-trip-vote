@@ -1,8 +1,8 @@
 import { corsHeaders, json, err } from "../_shared/cors.ts";
 import { adminClient, requireUser } from "../_shared/supa.ts";
-import { scrape, geocode, milesBetween, stateAbbr, detectSource, canonicalUrl, crawlSite } from "../_shared/scrape.ts";
+import { scrape, geocode, milesBetween, stateAbbr, detectSource, canonicalUrl, crawlSite, verifyImages } from "../_shared/scrape.ts";
 import { elevationFt, elevationNote, MAX_ELEVATION_FT } from "../_shared/elevation.ts";
-import { askJson, extractListing, resolvePlace, findListings, FAMILY_CONTEXT, DEST_RUBRIC, PROP_RUBRIC, DEST_SCHEMA, PROP_SCHEMA, sumScores } from "../_shared/claude.ts";
+import { askJson, extractListing, resolvePlace, findListings, pickHero, FAMILY_CONTEXT, DEST_RUBRIC, PROP_RUBRIC, DEST_SCHEMA, PROP_SCHEMA, sumScores } from "../_shared/claude.ts";
 
 const MATCH_MILES = 45;
 
@@ -24,6 +24,15 @@ async function enrichFromSite(s: { url: string; source: string; title: string | 
   s.description += "\n\n--- Site text (excerpt) ---\n" + s.text.slice(0, 9000);
   s.note = crawl.pages.length > 1 ? `We read ${crawl.pages.length} pages of that site. Please double-check the town, bedrooms and bathrooms before saving.` : "We read this page with a little AI help. Please double-check the town, bedrooms and bathrooms before saving.";
   s.ok = !!(s.city && s.bedrooms);
+}
+
+/** Cabin-company photos: keep only links that serve images, then let Claude choose the cover and drop graphics. */
+async function curatePhotos(photos: string[], source: string): Promise<string[]> {
+  if (!photos?.length) return [];
+  if (source === "airbnb" || source === "vrbo") return photos;
+  const ok = await verifyImages(photos, 20);
+  if (!ok.length) return [];
+  return await pickHero(ok);
 }
 
 /** Same listing link, or the same house name in the same destination, already on the list? */
@@ -199,6 +208,9 @@ Deno.serve(async (req) => {
       const jit = () => (Math.random() - 0.5) * 0.06;
       const asAi = !!body.as_ai && !!profile?.is_admin;
       const elevH = await elevationFt(geo.lat, geo.lng);
+      const src = url ? detectSource(url) : "other";
+      const photosIn: string[] = Array.isArray(body.photos) ? body.photos.filter((x: unknown) => typeof x === "string").slice(0, 16) : [];
+      const photosOut = photosIn.length ? await curatePhotos(photosIn, src) : [];
       const row = {
         elevation_ft: elevH,
         ai_pick: asAi, ai_note: asAi ? (body.ai_note || null) : null,
@@ -209,8 +221,8 @@ Deno.serve(async (req) => {
         sleeps: body.sleeps ? parseInt(body.sleeps) : null,
         price_night: body.price_night ? parseFloat(body.price_night) : null,
         price_total: body.price_total ? parseFloat(body.price_total) : null,
-        image_url: body.image_url || (Array.isArray(body.photos) && body.photos[0]) || null, description: body.description || null,
-        photos: Array.isArray(body.photos) ? body.photos.filter((x: unknown) => typeof x === "string").slice(0, 16) : [],
+        image_url: (src === "airbnb" || src === "vrbo") ? (body.image_url || photosOut[0] || null) : (photosOut[0] || null), description: body.description || null,
+        photos: photosOut,
         rating: body.rating ? parseFloat(body.rating) : null,
         review_count: body.review_count ? parseInt(body.review_count) : null,
         notes: body.notes || null, submitted_by: asAi ? null : user.id, status: "pending",
@@ -234,7 +246,7 @@ Deno.serve(async (req) => {
           const s = await scrape(prop.url);
           await enrichFromSite(s, true);
           const upd: Record<string, unknown> = { description: s.description || prop.description, bedrooms: s.bedrooms ?? prop.bedrooms, bathrooms: s.bathrooms ?? prop.bathrooms, sleeps: s.sleeps ?? prop.sleeps, image_url: prop.image_url || s.image_url || s.photos?.[0] || null };
-          if (s.photos?.length) upd.photos = s.photos;
+          if (s.photos?.length) { upd.photos = await curatePhotos(s.photos, prop.source); upd.image_url = (upd.photos as string[])[0] || prop.image_url || null; }
           const pn = (s as unknown as Record<string, unknown>).price_night; if (pn && !prop.price_night) upd.price_night = pn;
           if (s.city && s.state && (s.city.toLowerCase() !== (prop.city || "").toLowerCase())) {
             const g = await geocode(`${s.city}, ${s.state}`);
@@ -346,7 +358,7 @@ Deno.serve(async (req) => {
         ai_pick: true, ai_note: `Found by web search when ${dest.name} was added. ${body.why || ""}`.trim(),
         destination_id: dest.id, url: s.url, source: s.source, title: s.title, city: s.city || dest.region.split(",")[0], state: s.state || dest.state,
         lat: near.lat + jit(), lng: near.lng + jit(), elevation_ft: await elevationFt(near.lat, near.lng), bedrooms: s.bedrooms, bathrooms: s.bathrooms, sleeps: s.sleeps,
-        price_night: (s as unknown as Record<string, unknown>).price_night ?? null, image_url: s.image_url || s.photos?.[0] || null, description: s.description, photos: s.photos || [],
+        price_night: (s as unknown as Record<string, unknown>).price_night ?? null, image_url: (s.source === "airbnb" || s.source === "vrbo") ? (s.image_url || s.photos?.[0] || null) : ((s.photos = await curatePhotos(s.photos || [], s.source))[0] || null), description: s.description, photos: s.photos || [],
         rating: s.rating, review_count: s.review_count, submitted_by: null, status: "pending",
       };
       const { data: prop, error } = await admin.from("properties").insert(row).select("id,title").single();
@@ -362,8 +374,8 @@ Deno.serve(async (req) => {
       const s = await scrape(prop.url);
       photos = s.photos || [];
       if (prop.source !== "airbnb" && prop.source !== "vrbo") { try { const c = await crawlSite(prop.url, 8); photos = Array.from(new Set([...photos, ...c.photos])).slice(0, 16); } catch (e) { console.error(e); } }
-      const upd: Record<string, unknown> = { photos };
-      if (!prop.image_url && photos[0]) upd.image_url = photos[0];
+      photos = await curatePhotos(photos, prop.source);
+      const upd: Record<string, unknown> = { photos, image_url: photos[0] || prop.image_url || null };
       const { data: saved, error } = await admin.from("properties").update(upd).eq("id", prop.id).select("id,photos").single();
       if (error) return err(error.message, 500);
       return json({ photos: saved.photos });

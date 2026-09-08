@@ -268,6 +268,8 @@ export function collectPhotos(html: string, source: string, base?: string): stri
       if (srcset) { const parts = srcset.split(",").map((x) => x.trim().split(/\s+/)); const best = parts.sort((a, b) => (parseInt(b[1]) || 0) - (parseInt(a[1]) || 0))[0]; if (best?.[0]) u = best[0]; }
       if (!u || /^data:/.test(u)) continue;
       try { u = new URL(u, base).toString(); } catch { continue; }
+      const inner = u.match(/[?&](?:src|url|image)=(https?%3A%2F%2F[^&]+|https?:\/\/[^&]+)/i)?.[1];
+      if (inner) { try { u = decodeURIComponent(inner); } catch { /* keep */ } }
       if (BAD_IMG.test(u) || !/\.(jpe?g|webp|png)(\?|$)|squarespace-cdn|wixstatic|cloudinary|imgix|cdn/i.test(u)) continue;
       const w = parseInt(tag.match(/\swidth=["']?(\d+)/i)?.[1] || "0") || parseInt(u.match(/(\d{3,4})w/)?.[1] || "0") || 800;
       const hgt = parseInt(tag.match(/\sheight=["']?(\d+)/i)?.[1] || "0");
@@ -278,4 +280,21 @@ export function collectPhotos(html: string, source: string, base?: string): stri
     urls = uniq(found.sort((a, b) => b.w - a.w).map((f) => f.u));
   }
   return urls.filter((u) => !BAD_IMG.test(u)).slice(0, 16);
+}
+
+/** Keep only URLs that really serve an image (quick HEAD/GET, in parallel). */
+export async function verifyImages(urls: string[], limit = 20): Promise<string[]> {
+  const check = async (u: string) => {
+    try {
+      const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 6000);
+      let res = await fetch(u, { method: "HEAD", headers: { "User-Agent": UA }, redirect: "follow", signal: ctrl.signal });
+      if (!res.ok || !/^image\//i.test(res.headers.get("content-type") || "")) {
+        res = await fetch(u, { method: "GET", headers: { "User-Agent": UA, "Range": "bytes=0-2048" }, redirect: "follow", signal: ctrl.signal });
+      }
+      clearTimeout(t);
+      return res.ok && /^image\//i.test(res.headers.get("content-type") || "") ? u : null;
+    } catch { return null; }
+  };
+  const out = await Promise.all(urls.slice(0, limit).map(check));
+  return out.filter((u): u is string => !!u);
 }

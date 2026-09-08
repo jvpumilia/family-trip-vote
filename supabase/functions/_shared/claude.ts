@@ -293,3 +293,27 @@ export async function findListings(destName: string, locality: string, region: s
   (kept as unknown as { _raw?: string })._raw = text.slice(0, 1500) + ` | stop=${res.stop_reason} blocks=${(res.content as Array<{ type: string }>).map((b) => b.type).join(",")}`;
   return kept;
 }
+
+/** Look at candidate photos and order them: best cover shot first; drop logos, maps, floor plans, text graphics. */
+export async function pickHero(urls: string[]): Promise<string[]> {
+  const cands = urls.slice(0, 8);
+  if (cands.length < 2) return urls;
+  const content: Array<Record<string, unknown>> = [];
+  cands.forEach((u, i) => { content.push({ type: "text", text: `Image ${i}:` }); content.push({ type: "image", source: { type: "url", url: u } }); });
+  content.push({ type: "text", text: `These are candidate photos for a vacation-rental house listing. Return JSON only: {"order": [indices best-first]} where you include ONLY real photographs of the house (exterior, living areas, kitchen, bedrooms, pool, views from the property). Exclude logos, maps, infographics, floor plans, menus, text graphics, stock scenery not of the property, and blank/tiny images. Put the single best cover photo (usually the exterior or the main living space) first.` });
+  try {
+    const params: Record<string, unknown> = {
+      model: Deno.env.get("CLAUDE_EXTRACT_MODEL") || "claude-sonnet-5",
+      max_tokens: 200,
+      messages: [{ role: "user", content }],
+      output_config: { effort: "low", format: { type: "json_schema", schema: { type: "object", additionalProperties: false, required: ["order"], properties: { order: { type: "array", items: { type: "integer" } } } } } },
+    };
+    // deno-lint-ignore no-explicit-any
+    const res = await (client.beta.messages as any).create(params, { timeout: 60_000, maxRetries: 0 });
+    const t = (res.content as Array<{ type: string; text?: string }>).filter((b) => b.type === "text").map((b) => b.text || "").join("");
+    const order = (JSON.parse(t).order as number[]).filter((i) => Number.isInteger(i) && i >= 0 && i < cands.length);
+    if (!order.length) return urls;
+    const kept = Array.from(new Set(order)).map((i) => cands[i]);
+    return [...kept, ...urls.slice(8)];
+  } catch (e) { console.error("pickHero failed", e); return urls; }
+}
