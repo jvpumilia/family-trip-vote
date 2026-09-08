@@ -739,7 +739,7 @@
     const d = destOf(p); const det = p.details || {};
     const matches = familyMatchesFor(p);
     return `<div class="card rec-card ${isDq(p) ? "dq" : ""}">
-      <div class="thumb" style="${p.image_url ? `background-image:url('${esc(p.image_url)}')` : ""}"></div>
+      <div class="thumb" data-open-prop="${p.id}" style="${(p.photos?.[0] || p.image_url) ? `background-image:url('${esc(p.photos?.[0] || p.image_url)}')` : ""}"></div>
       <div>
         <div class="title-row"><h3>${rank ? `#${rank} ` : ""}<a href="#" data-open-prop="${p.id}">${esc(p.title)}</a> <i class="pill ai">AI Selected</i> ${favBtn(p, "inline")}</h3><span class="mini-score">${p.status === "scored" ? p.total : "…"}<small>/100</small></span></div>
         <div class="muted tiny">${esc(d?.name || "")} · ${p.bedrooms ?? "?"} BR · ${p.bathrooms ?? "?"} BA · sleeps ${p.sleeps ?? "?"}${p.price_night ? " · " + money(p.price_night) + "/night" : ""}${p.rating ? ` · ★ ${p.rating}${p.review_count ? ` (${p.review_count})` : ""}` : ""}
