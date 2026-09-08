@@ -178,7 +178,7 @@
     $$("#main-tabs .tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
     $$(".panel").forEach((p) => p.hidden = p.dataset.panel !== name);
     history.replaceState(null, "", "#" + name);
-    if (name === "map" && S.map) setTimeout(() => S.map.invalidateSize(), 50);
+    if (name === "map" && S.map) setTimeout(() => { S.map.invalidateSize(); fitMapOnce(); }, 60);
   }
 
   // ---------- map ----------
@@ -190,6 +190,14 @@
     S.layers.dests = L.layerGroup().addTo(S.map);
     S.layers.props = L.layerGroup().addTo(S.map);
     S.layers.lines = L.layerGroup().addTo(S.map);
+  }
+  /** Fit the map to every pin, but only once the map box actually has a size (a hidden tab measures 0×0 and the fit collapses onto one pin). */
+  function fitMapOnce() {
+    if (S.mapFitted || !S.map || !S.dests.length) return;
+    const el = $("#map"); if (!el.offsetWidth || !el.offsetHeight) return;
+    S.map.invalidateSize();
+    const pts = [...S.dests.map((d) => [d.lat, d.lng]), ...S.origins.map((o) => [o.lat, o.lng])];
+    S.map.fitBounds(pts, { padding: [30, 30], maxZoom: 5 }); S.mapFitted = true;
   }
   function renderMap() {
     ensureMap();
@@ -208,10 +216,7 @@
       m.on("click", () => selectDest(d));
       m.addTo(dests);
     });
-    if (!S.mapFitted && S.dests.length) {
-      const pts = [...S.dests.map((d) => [d.lat, d.lng]), ...S.origins.map((o) => [o.lat, o.lng])];
-      S.map.fitBounds(pts, { padding: [30, 30], maxZoom: 5 }); S.mapFitted = true;
-    }
+    fitMapOnce();
     S.props.forEach((p) => {
       if (p.lat == null) return;
       const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: "", html: `<div class="prop-marker ${p.is_finalist ? "finalist" : ""}" style="width:16px;height:16px"></div>`, iconSize: [16, 16], iconAnchor: [8, 16] }), zIndexOffset: 300 });
