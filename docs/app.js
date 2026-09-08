@@ -21,7 +21,7 @@
     ["reviews", "Reviews", 10], ["logistics", "Parking & toddler logistics", 5],
   ];
 
-  const S = { session: null, profile: null, profiles: [], origins: [], dests: [], props: [], votes: [], settings: {}, avail: [], favs: new Set(), noms: [], tab: "map", map: null, layers: {}, selectedDest: null, filter: "", sort: "total" };
+  const S = { session: null, profile: null, profiles: [], origins: [], dests: [], props: [], votes: [], settings: {}, avail: [], favs: new Set(), noms: [], seen: new Set(), tab: "map", map: null, layers: {}, selectedDest: null, filter: "", sort: "total" };
 
   // ---------- tiny UI helpers ----------
   let toastT;
@@ -40,6 +40,16 @@
   const aiPicks = () => S.props.filter((p) => p.ai_pick);
   const isDq = (p) => p.avail_status === "unavailable";
   const isFav = (p) => S.favs.has(p.id);
+  /** "New" = added after this person's account was created and not opened by them yet */
+  const isNew = (p) => !!S.profile && !S.seen.has(p.id) && new Date(p.created_at).getTime() > new Date(S.profile.created_at).getTime();
+  const newBadge = (p) => isNew(p) ? `<i class="pill new">New</i>` : "";
+  const newCount = () => S.props.filter(isNew).length;
+  function markSeen(p) {
+    if (!isNew(p)) return;
+    S.seen.add(p.id);
+    sb.from("seen_properties").insert({ user_id: S.session.user.id, property_id: p.id }).then(({ error }) => { if (error && !/duplicate/.test(error.message)) console.warn("seen", error.message); });
+    renderAll();
+  }
   const favBtn = (p, cls = "") => `<button class="fav ${isFav(p) ? "on" : ""} ${cls}" data-fav="${p.id}" title="${isFav(p) ? "Remove from my favorites" : "Save to my favorites"}" aria-label="favorite">${isFav(p) ? "♥" : "♡"}</button>`;
   async function toggleFav(id) {
     if (S.favs.has(id)) { const { error } = await sb.from("favorites").delete().eq("user_id", S.session.user.id).eq("property_id", id); if (error) { toast(error.message, 5000); return; } S.favs.delete(id); }
@@ -121,7 +131,7 @@
 
   // ---------- data ----------
   async function loadAll() {
-    const [pr, o, d, p, v, st, av, fv, nm] = await Promise.all([
+    const [pr, o, d, p, v, st, av, fv, nm, sn] = await Promise.all([
       sb.from("profiles").select("*"),
       sb.from("origins").select("*").order("sort"),
       sb.from("destinations").select("*"),
@@ -131,8 +141,10 @@
       sb.from("availability").select("*").order("start_date"),
       sb.from("favorites").select("property_id"),
       sb.from("nominations").select("*"),
+      sb.from("seen_properties").select("property_id"),
     ]);
     S.noms = nm.data || [];
+    S.seen = new Set((sn.data || []).map((r) => r.property_id));
     S.avail = av.data || [];
     S.favs = new Set((fv.data || []).map((r) => r.property_id));
     S.profiles = pr.data || []; S.origins = o.data || []; S.dests = d.data || []; S.props = p.data || []; S.votes = v.data || [];
@@ -237,7 +249,7 @@
     }).join("") : `<p class="empty">Nothing yet.</p>`;
     const top = S.props.filter((p) => p.status === "scored" && !isDq(p)).sort((a, b) => b.total - a.total).slice(0, 5);
     $("#landing-props").innerHTML = top.length ? top.map((p, i) => `<div class="rank-row"><div class="n">${i + 1}</div>
-        <div><div class="t"><a href="#" data-open-prop="${p.id}">${esc(p.title)}</a>${p.ai_pick ? ' <i class="pill ai">AI Selected</i>' : ""}${p.is_finalist ? ' <i class="pill sun">★</i>' : ""}${p.gate_pass ? "" : ' <i class="pill warn">bed plan ✗</i>'}</div>
+        <div><div class="t"><a href="#" data-open-prop="${p.id}">${esc(p.title)}</a>${p.ai_pick ? ' <i class="pill ai">AI Selected</i>' : ""}${p.is_finalist ? ' <i class="pill sun">★</i>' : ""}${p.gate_pass ? "" : ' <i class="pill warn">bed plan ✗</i>'} ${newBadge(p)}</div>
         <div class="s">${esc(destOf(p)?.name || p.city || "")} · ${p.bedrooms ?? "?"} BR · ${p.bathrooms ?? "?"} BA${p.price_night ? " · " + money(p.price_night) + "/night" : ""}</div></div>
         <div class="sc">${p.total}<small>/100</small></div></div>`).join("") : `<p class="empty">No houses scored yet. Add one on the My picks tab.</p>`;
   }
@@ -335,6 +347,7 @@
     return `<div class="card prop-card ${isDq(p) ? "dq" : ""}" data-open-prop="${p.id}">
       <div class="thumb" style="${(p.photos?.[0] || p.image_url) ? `background-image:url('${esc(p.photos?.[0] || p.image_url)}')` : ""}"></div>
       ${favBtn(p, "card-fav")}
+      ${isNew(p) ? `<span class="new-tag">New</span>` : ""}
       ${p.is_finalist ? `<span class="star">★ On the ballot${nomsFor(p.id).length > 1 ? ` ×${nomsFor(p.id).length}` : ""}</span>` : p.ai_pick ? `<span class="star" style="background:#5b3fa8;color:#fff">AI Selected</span>` : aiMatchFor(p) ? `<span class="star" style="background:#1f7a8c;color:#fff">Matches AI Selected</span>` : ""}
       ${pending ? `<i class="pill neutral badge">scoring…</i>` : (p.gate_pass ? `<i class="pill ok badge">Sleeps us right ✓</i>` : `<i class="pill warn badge">Bed plan short ✗</i>`)}
       <div class="body">
@@ -354,6 +367,9 @@
     sel.value = S.filter || cur || "";
     let list = S.props.filter((p) => !S.filter || p.destination_id === S.filter);
     if ($("#lodging-favs").checked) list = list.filter(isFav);
+    if ($("#lodging-new").checked) list = list.filter(isNew);
+    $("#lodging-new-count").textContent = newCount() ? `(${newCount()})` : "";
+    const tab = $('[data-tab="lodging"]'); if (tab) tab.innerHTML = newCount() ? `Lodging <span class="tabdot">${newCount()}</span>` : "Lodging";
     $("#lodging-favs-count").textContent = S.favs.size ? `(${S.favs.size})` : "";
     const sort = $("#lodging-sort").value;
     list = list.slice().sort((a, b) => (isDq(a) - isDq(b)) || (sort === "price" ? (a.price_night || 1e9) - (b.price_night || 1e9) : sort === "bedrooms" ? (b.bedrooms || 0) - (a.bedrooms || 0) : sort === "newest" ? new Date(b.created_at) - new Date(a.created_at) : b.total - a.total));
@@ -361,9 +377,11 @@
   }
   $("#lodging-filter").onchange = (e) => { S.filter = e.target.value; renderLodging(); };
   $("#lodging-favs").onchange = renderLodging;
+  $("#lodging-new").onchange = renderLodging;
   $("#lodging-sort").onchange = renderLodging;
 
   function propModal(p) {
+    markSeen(p);
     const d = destOf(p);
     const mine = !p.ai_pick && (p.submitted_by === S.session.user.id || (householdOf(p.submitted_by) && householdOf(p.submitted_by) === S.profile.household));
     const det = p.details || {};
@@ -748,7 +766,7 @@
     if (!fin.length) { area.innerHTML = html + `<p class="empty">Nothing is on the ballot yet. A house appears here once its household stars it as one of their two finalists on the My picks tab.</p>`; return; }
     const unranked = fin.filter((p) => !ranking.includes(p.id)).sort((a, b) => b.total - a.total);
     const item = (p, i, inRank) => `<div class="rank-item"><div class="n">${inRank ? i + 1 : "·"}</div>
-      <div><div class="t"><a href="#" data-open-prop="${p.id}">${esc(p.title)}</a> ${p.gate_pass ? "" : '<i class="pill warn">gate ✗</i>'}</div><div class="s">${esc(destOf(p)?.name || "")} · ${p.bedrooms ?? "?"} BR · ${p.total}/100${p.price_night ? " · " + money(p.price_night) + "/night" : ""}</div></div>
+      <div><div class="t"><a href="#" data-open-prop="${p.id}">${esc(p.title)}</a> ${p.gate_pass ? "" : '<i class="pill warn">gate ✗</i>'} ${newBadge(p)}</div><div class="s">${esc(destOf(p)?.name || "")} · ${p.bedrooms ?? "?"} BR · ${p.total}/100${p.price_night ? " · " + money(p.price_night) + "/night" : ""}</div></div>
       <div class="ctl">${inRank ? `<button data-mv="${p.id}" data-dir="-1" title="Move up" ${!open ? "disabled" : ""}>▲</button><button data-mv="${p.id}" data-dir="1" title="Move down" ${!open ? "disabled" : ""}>▼</button><button data-rm="${p.id}" title="Remove" ${!open ? "disabled" : ""}>✕</button>` : `<button data-add="${p.id}" title="Add to my ranking" ${!open ? "disabled" : ""}>＋</button>`}</div></div>`;
     html += `<div class="ballot">
       <div class="card"><h3>My ranking</h3><p class="muted tiny">1 = the house I most want us to book. ${minRanked() > 1 ? `Rank at least ${Math.min(minRanked(), fin.length)}.` : "You don't have to rank them all, but"} A house you leave out gets no points from you.</p>
@@ -811,7 +829,7 @@
     return `<div class="card rec-card ${isDq(p) ? "dq" : ""}">
       <div class="thumb" data-open-prop="${p.id}" style="${(p.photos?.[0] || p.image_url) ? `background-image:url('${esc(p.photos?.[0] || p.image_url)}')` : ""}"></div>
       <div>
-        <div class="title-row"><h3>${rank ? `#${rank} ` : ""}<a href="#" data-open-prop="${p.id}">${esc(p.title)}</a> <i class="pill ai">AI Selected</i> ${favBtn(p, "inline")}</h3><span class="mini-score">${p.status === "scored" ? p.total : "…"}<small>/100</small></span></div>
+        <div class="title-row"><h3>${rank ? `#${rank} ` : ""}<a href="#" data-open-prop="${p.id}">${esc(p.title)}</a> <i class="pill ai">AI Selected</i> ${newBadge(p)} ${favBtn(p, "inline")}</h3><span class="mini-score">${p.status === "scored" ? p.total : "…"}<small>/100</small></span></div>
         <div class="muted tiny">${esc(d?.name || "")} · ${p.bedrooms ?? "?"} BR · ${p.bathrooms ?? "?"} BA · sleeps ${p.sleeps ?? "?"}${p.price_night ? " · " + money(p.price_night) + "/night" : ""}${p.rating ? ` · ★ ${p.rating}${p.review_count ? ` (${p.review_count})` : ""}` : ""}
           ${p.gate_pass ? '<i class="pill ok">sleeps us right ✓</i>' : '<i class="pill warn">bed plan short ✗</i>'} ${availBadge(p, true)} ${p.elevation_ft > maxElev() ? elevPill(p.elevation_ft) : ""}
           ${nomsFor(p.id).length ? nomPills(p) : ""}</div>

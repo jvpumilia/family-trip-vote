@@ -227,3 +227,10 @@ details.travel-detail summary{cursor:pointer;color:var(--sea)}
 .wheel-item{background:#fff;border:1px solid var(--line);border-radius:10px;padding:.7em 1em;font-weight:600;text-align:center;font-family:Fraunces,serif;font-size:1.15rem}
 .wheel-item.on{border-color:var(--accent);background:#fff7e1}
 .nom-list{margin-top:.5em}
+
+.pill.new{background:#2f9e63}
+.new-tag{position:absolute;left:8px;bottom:8px;background:#2f9e63;color:#fff;border-radius:999px;padding:.15em .6em;font-size:.75rem;font-weight:700;z-index:2}
+.prop-card .thumb{position:relative}
+.prop-card{position:relative}
+.tabdot{display:inline-block;background:#2f9e63;color:#fff;border-radius:999px;padding:0 .45em;font-size:.72rem;margin-left:.2em;vertical-align:1px}
+.tab.active .tabdot{background:#fff;color:#2f9e63}
