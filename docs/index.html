@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-<link rel="stylesheet" href="style.css?v=20260909122158">
+<link rel="stylesheet" href="style.css?v=20260909125351">
 </head>
 <body>
 <header class="top">
@@ -56,9 +56,9 @@
     <button class="tab" data-tab="destinations">Destinations</button>
     <button class="tab" data-tab="lodging">Lodging</button>
     <button class="tab" data-tab="mine">My picks</button>
-    <button class="tab" data-tab="dates">Dates</button>
+    <button class="tab" data-tab="dates">My Availability</button>
     <button class="tab" data-tab="chat">Chat</button>
-    <button class="tab" data-tab="avail">Availability</button>
+    <button class="tab" data-tab="avail">Lodging Availability</button>
     <button class="tab" data-tab="vote">Vote</button>
     <button class="tab" data-tab="recs">AI Selected</button>
     <button class="tab" data-tab="results">Results</button>
@@ -78,11 +78,11 @@
           <ol class="list">
             <li><b>Look around.</b> The Map and Destinations tabs show every place under consideration, scored the same way, with travel difficulty from each home.</li>
             <li><b>Add houses.</b> Check the Lodging tab first so we don't add the same house twice (the site blocks a repeat link or name and opens the existing one). On My picks, paste a listing link (Airbnb, VRBO or a cabin company). The site reads the page, places it on the map, and scores it against our family's needs in about a minute. Add as many as you like; add the nightly price if the page doesn't show it.</li>
-            <li><b>Pick the week.</b> On the Dates tab, mark each week Can't / Could / Prefer. The results roll up by household, and the site ranks the weeks that work for everyone and shows which houses are open then.</li>
+            <li><b>Pick the week.</b> On the My Availability tab, mark each week Can't / Could / Prefer. The results roll up by household, and the site ranks the weeks that work for everyone and shows which houses are open then.</li>
             <li><b>Talk it over.</b> The Chat tab is one thread for the whole family. Tag the house you're discussing so the thread stays attached to it; each house's details show its recent messages. Type <b>@</b> to mention someone. A 💬 flag at the top of every page tells you when there are messages you haven't seen, red when someone mentioned you.</li>
             <li><b>Spot what's new.</b> Houses added after you joined carry a green <b>New</b> badge until you open them, and the Lodging tab shows how many are waiting.</li>
-            <li><b>Save favorites.</b> Tap the ♡ on any house to keep it in your own favorites list (nobody else sees it). The Lodging and Availability tabs have a "My favorites" filter.</li>
-            <li><b>Check availability.</b> The site can't read a host's calendar, so when you look at one, open the house and record the weeks you saw open or booked. The Availability tab lines every house up across May 1 to Aug 20 so we can see who is open when. "Not available for our week" disqualifies a house from the ballot.</li>
+            <li><b>Save favorites.</b> Tap the ♡ on any house to keep it in your own favorites list (nobody else sees it). The Lodging and Lodging Availability tabs have a "My favorites" filter.</li>
+            <li><b>Check availability.</b> The site can't read a host's calendar, so when you look at one, open the house and record the weeks you saw open or booked. The Lodging Availability tab lines every house up across May 1 to Aug 20 so we can see who is open when. "Not available for our week" disqualifies a house from the ballot.</li>
             <li><b>Nominate two.</b> Each household nominates the two houses it is actually recommending, from anything on the site: its own finds, an AI Selected house, or another family's. Only nominated houses go on the ballot, so a destination with no nominated house can't be voted on. If two households nominate the same house it appears once and the votes aren't split. Can't decide? The 🎲 button on My picks nominates two of your favorites at random.</li>
             <li><b>Vote.</b> Nominations lock on <b>Sept 21</b> so the ballot is fixed. Then rank the nominated houses from your favorite down (at least three); ranked-choice, changeable any time before voting closes <b>Sept 28</b>. A 🎲 on the Vote tab fills a random ranking if you truly can't choose. We book the winner right after, because 7-bedroom houses for June go fast.</li>
           </ol>
@@ -263,7 +263,7 @@
 
   <section class="panel" data-panel="dates" hidden>
     <div class="panel-head">
-      <h2>Which week?</h2>
+      <h2>My availability: which week?</h2>
       <p class="muted">Tap each Saturday-to-Saturday week to mark it <b>Can't</b>, <b>Could</b> or <b>Prefer</b>. Everyone answers for themselves; the results roll up by household. Below, the site combines the answers with the availability calendar to show which weeks work best and which houses are open then.</p>
     </div>
     <div class="card" id="dates-mine"></div>
@@ -297,7 +297,7 @@
 
   <section class="panel" data-panel="avail" hidden>
     <div class="panel-head">
-      <h2>Availability, house by house</h2>
+      <h2>Lodging availability, house by house</h2>
       <p class="muted">Every Saturday-to-Saturday week from May 1 to Aug 20, 2027. When you look at a host's calendar, open the house and add what you saw; it shows up here for everyone. Green = someone confirmed it's open that week, red = booked, grey = nobody has checked.</p>
       <div class="toolbar">
         <select id="avail-filter"><option value="">All destinations</option></select>
@@ -350,7 +350,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="config.js?v=20260909122158"></script>
-<script src="app.js?v=20260909122158"></script>
+<script src="config.js?v=20260909125351"></script>
+<script src="app.js?v=20260909125351"></script>
 </body>
 </html>
