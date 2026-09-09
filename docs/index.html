@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-<link rel="stylesheet" href="style.css?v=20260908143934">
+<link rel="stylesheet" href="style.css?v=20260909122158">
 </head>
 <body>
 <header class="top">
@@ -56,6 +56,7 @@
     <button class="tab" data-tab="destinations">Destinations</button>
     <button class="tab" data-tab="lodging">Lodging</button>
     <button class="tab" data-tab="mine">My picks</button>
+    <button class="tab" data-tab="dates">Dates</button>
     <button class="tab" data-tab="chat">Chat</button>
     <button class="tab" data-tab="avail">Availability</button>
     <button class="tab" data-tab="vote">Vote</button>
@@ -77,6 +78,7 @@
           <ol class="list">
             <li><b>Look around.</b> The Map and Destinations tabs show every place under consideration, scored the same way, with travel difficulty from each home.</li>
             <li><b>Add houses.</b> Check the Lodging tab first so we don't add the same house twice (the site blocks a repeat link or name and opens the existing one). On My picks, paste a listing link (Airbnb, VRBO or a cabin company). The site reads the page, places it on the map, and scores it against our family's needs in about a minute. Add as many as you like; add the nightly price if the page doesn't show it.</li>
+            <li><b>Pick the week.</b> On the Dates tab, mark each week Can't / Could / Prefer. The results roll up by household, and the site ranks the weeks that work for everyone and shows which houses are open then.</li>
             <li><b>Talk it over.</b> The Chat tab is one thread for the whole family. Tag the house you're discussing so the thread stays attached to it; each house's details show its recent messages. Type <b>@</b> to mention someone. A 💬 flag at the top of every page tells you when there are messages you haven't seen, red when someone mentioned you.</li>
             <li><b>Spot what's new.</b> Houses added after you joined carry a green <b>New</b> badge until you open them, and the Lodging tab shows how many are waiting.</li>
             <li><b>Save favorites.</b> Tap the ♡ on any house to keep it in your own favorites list (nobody else sees it). The Lodging and Availability tabs have a "My favorites" filter.</li>
@@ -259,6 +261,16 @@
     </div>
   </section>
 
+  <section class="panel" data-panel="dates" hidden>
+    <div class="panel-head">
+      <h2>Which week?</h2>
+      <p class="muted">Tap each Saturday-to-Saturday week to mark it <b>Can't</b>, <b>Could</b> or <b>Prefer</b>. Everyone answers for themselves; the results roll up by household. Below, the site combines the answers with the availability calendar to show which weeks work best and which houses are open then.</p>
+    </div>
+    <div class="card" id="dates-mine"></div>
+    <div class="card" id="dates-results" style="margin-top:14px"></div>
+    <div id="dates-best" style="margin-top:14px"></div>
+  </section>
+
   <section class="panel" data-panel="chat" hidden>
     <div class="panel-head">
       <h2>Family chat</h2>
@@ -338,7 +350,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="config.js?v=20260908143934"></script>
-<script src="app.js?v=20260908143934"></script>
+<script src="config.js?v=20260909122158"></script>
+<script src="app.js?v=20260909122158"></script>
 </body>
 </html>

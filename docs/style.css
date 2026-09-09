@@ -316,3 +316,27 @@ html,body{overflow-x:hidden;max-width:100%}
 .tip{position:fixed;z-index:500;background:var(--ink);color:#fff;padding:.45em .7em;border-radius:8px;font-size:.78rem;line-height:1.35;max-width:min(320px,90vw);white-space:pre-line;pointer-events:none;box-shadow:0 6px 20px rgba(0,0,0,.25)}
 .strip .cell{cursor:help}
 .avail-grid .cell{cursor:pointer}
+
+.wk-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;margin-top:.6em}
+@media (max-width:640px){.wk-grid{grid-template-columns:repeat(4,1fr)}}
+.wk{border:1px solid var(--line);border-radius:10px;padding:.5em .3em;text-align:center;cursor:pointer;background:#fff;font:inherit;line-height:1.2}
+.wk .d{font-weight:600;font-size:.85rem}.wk .c{font-size:.72rem;color:var(--muted);margin-top:.15em}
+.wk.no{background:#fde3e3;border-color:#ef9a9a}.wk.no .c{color:#8a1f1f}
+.wk.ok{background:#fff3c4;border-color:#f1dfa6}.wk.ok .c{color:#6a4a00}
+.wk.prefer{background:#d8f2e2;border-color:#8fd3a6}.wk.prefer .c{color:#1f5a34}
+.wk.trip{outline:2px solid var(--accent);outline-offset:-2px}
+.poll-grid{display:grid;gap:2px;font-size:.78rem;min-width:820px}
+.poll-grid .hdr{text-align:center;color:var(--muted);font-weight:600;line-height:1.1;padding:2px 0}
+.poll-grid .hdr.trip{color:var(--accent)}
+.poll-grid .rowlabel{display:flex;align-items:center;padding:0 6px;border-right:1px solid var(--line);font-weight:600;font-size:.82rem}
+.poll-grid .rowlabel .s{font-weight:400;color:var(--muted);font-size:.72rem;margin-left:.35em}
+.poll-grid .cell{border-radius:5px;min-height:28px;background:#ebe5d8;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;color:#fff}
+.poll-grid .cell.no{background:#ef9a9a}.poll-grid .cell.ok{background:#e0c96a}.poll-grid .cell.prefer{background:#8fd3a6}
+.poll-grid .cell.trip{outline:2px solid var(--accent);outline-offset:-2px}
+.poll-grid .sum{background:transparent;color:var(--ink);font-weight:600;flex-direction:column;line-height:1.1}
+.best-week{display:grid;grid-template-columns:150px 1fr;gap:14px;align-items:start}
+@media (max-width:640px){.best-week{grid-template-columns:1fr}}
+.best-week .big{font-family:Fraunces,serif;font-weight:700;font-size:1.25rem;line-height:1.15}
+.best-week .meta{font-size:.82rem;color:var(--muted)}
+.house-line{display:flex;justify-content:space-between;gap:.6em;padding:.3em 0;border-bottom:1px dashed var(--line);font-size:.88rem}
+.house-line:last-child{border-bottom:0}

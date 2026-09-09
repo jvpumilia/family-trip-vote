@@ -21,7 +21,7 @@
     ["reviews", "Reviews", 10], ["logistics", "Parking & toddler logistics", 5],
   ];
 
-  const S = { session: null, profile: null, profiles: [], origins: [], dests: [], props: [], votes: [], settings: {}, avail: [], favs: new Set(), noms: [], seen: new Set(), msgs: [], tab: "map", map: null, layers: {}, selectedDest: null, filter: "", sort: "total" };
+  const S = { session: null, profile: null, profiles: [], origins: [], dests: [], props: [], votes: [], settings: {}, avail: [], favs: new Set(), noms: [], seen: new Set(), msgs: [], weekVotes: [], tab: "map", map: null, layers: {}, selectedDest: null, filter: "", sort: "total" };
 
   // ---------- tiny UI helpers ----------
   let toastT;
@@ -131,7 +131,7 @@
 
   // ---------- data ----------
   async function loadAll() {
-    const [pr, o, d, p, v, st, av, fv, nm, sn, mg] = await Promise.all([
+    const [pr, o, d, p, v, st, av, fv, nm, sn, mg, wv] = await Promise.all([
       sb.from("profiles").select("*"),
       sb.from("origins").select("*").order("sort"),
       sb.from("destinations").select("*"),
@@ -143,8 +143,10 @@
       sb.from("nominations").select("*"),
       sb.from("seen_properties").select("property_id"),
       sb.from("messages").select("*").order("created_at", { ascending: true }).limit(500),
+      sb.from("week_votes").select("*"),
     ]);
     S.msgs = mg.data || [];
+    S.weekVotes = wv.data || [];
     S.noms = nm.data || [];
     S.seen = new Set((sn.data || []).map((r) => r.property_id));
     S.avail = av.data || [];
@@ -171,7 +173,8 @@
         .on("postgres_changes", { event: "*", schema: "public", table: "votes" }, refresh)
         .on("postgres_changes", { event: "*", schema: "public", table: "availability" }, refresh)
         .on("postgres_changes", { event: "*", schema: "public", table: "nominations" }, refresh)
-        .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, refresh).subscribe();
+        .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, refresh)
+        .on("postgres_changes", { event: "*", schema: "public", table: "week_votes" }, refresh).subscribe();
     }
     renderAll();
     resumePendingAi();
@@ -179,7 +182,7 @@
 
   function renderAll() {
     if (!S.session || !S.profile) return; // signed out, or an account that no longer exists
-    renderMap(); renderDests(); renderLodging(); renderMine(); renderVote(); renderAvail(); renderRecs(); renderResults(); renderChat(); if (isAdmin()) renderAdmin();
+    renderMap(); renderDests(); renderLodging(); renderMine(); renderVote(); renderAvail(); renderDates(); renderRecs(); renderResults(); renderChat(); if (isAdmin()) renderAdmin();
   }
 
   // ---------- tabs ----------
@@ -748,6 +751,91 @@
         const { error } = await sb.from("destinations").delete().eq("id", t.dataset.delDest);
         if (error) toast(error.message, 5000); else { closeModal(); await loadAll(); renderAll(); }
       }
+    });
+  }
+
+  // ---------- dates poll + synthesis ----------
+  const CHOICE_NEXT = { "": "no", no: "ok", ok: "prefer", prefer: "" };
+  const CHOICE_LABEL = { no: "Can't", ok: "Could", prefer: "Prefer", "": "—" };
+  const myWeekChoice = (ws) => S.weekVotes.find((v) => v.user_id === S.session.user.id && v.week_start === ws)?.choice || "";
+  /** a household's answer for a week: any Can't → no; else any Prefer → prefer; else any Could → ok; else "" */
+  function householdChoice(hh, ws) {
+    const members = S.profiles.filter((p) => p.household === hh).map((p) => p.id);
+    const cs = S.weekVotes.filter((v) => v.week_start === ws && members.includes(v.user_id)).map((v) => v.choice);
+    if (!cs.length) return "";
+    if (cs.includes("no")) return "no";
+    if (cs.includes("prefer")) return "prefer";
+    return "ok";
+  }
+  const households = () => CFG.HOUSEHOLDS.filter((h) => h !== "Other" && S.profiles.some((p) => p.household === h)).concat(S.profiles.some((p) => p.household === "Other") ? ["Other"] : []);
+  async function setWeekChoice(ws, choice) {
+    if (!choice) { const { error } = await sb.from("week_votes").delete().eq("user_id", S.session.user.id).eq("week_start", ws); if (error) toast(error.message, 5000); }
+    else { const { error } = await sb.from("week_votes").upsert({ user_id: S.session.user.id, week_start: ws, choice, updated_at: new Date().toISOString() }); if (error) toast(error.message, 5000); }
+    await loadAll(); renderAll();
+  }
+  /** houses split by what the calendar says for a given week */
+  function housesForWeek(w) {
+    const rows = S.props.filter((p) => p.status === "scored" && !isDq(p));
+    const open = [], booked = [], unknown = [];
+    rows.forEach((p) => { const st = weekStatus(p.id, w); (st === "avail" ? open : st === "booked" || st === "part" ? booked : unknown).push(p); });
+    const byScore = (a, b) => b.total - a.total;
+    return { open: open.sort(byScore), booked: booked.sort(byScore), unknown: unknown.sort(byScore) };
+  }
+  function rankWeeks() {
+    const hhs = households();
+    return seasonWeeks().map((w) => {
+      const answers = hhs.map((h) => ({ h, c: householdChoice(h, w.start) }));
+      const can = answers.filter((a) => a.c === "ok" || a.c === "prefer").length;
+      const prefer = answers.filter((a) => a.c === "prefer").length;
+      const cant = answers.filter((a) => a.c === "no").length;
+      const unanswered = answers.filter((a) => !a.c).length;
+      const houses = housesForWeek(w);
+      return { w, answers, can, prefer, cant, unanswered, houses, score: cant ? -1000 * cant : 0 + can * 10 + prefer * 3 + Math.min(houses.open.length, 5) };
+    }).sort((a, b) => b.score - a.score || a.w.start.localeCompare(b.w.start));
+  }
+  function renderDates() {
+    const weeks = seasonWeeks();
+    const t = S.settings.trip || {};
+    // my answers
+    const answered = weeks.filter((w) => myWeekChoice(w.start)).length;
+    $("#dates-mine").innerHTML = `<h3>My answer <span class="muted" style="font-weight:400;font-size:.9rem">· ${answered} of ${weeks.length} weeks marked · tap a week to cycle Can't → Could → Prefer → clear</span></h3>
+      <div class="wk-grid">${weeks.map((w) => { const c = myWeekChoice(w.start); return `<button type="button" class="wk ${c} ${isTripWeek(w) ? "trip" : ""}" data-week="${w.start}" title="${weekRange(w)}"><div class="d">${weekLabel(w)}</div><div class="c">${CHOICE_LABEL[c]}</div></button>`; }).join("")}</div>
+      <div class="actions" style="margin-top:.6em"><button class="btn small" id="wk-all-ok">Mark all unmarked as Could</button><button class="btn small ghost" id="wk-clear">Clear my answers</button></div>`;
+    $$("#dates-mine [data-week]").forEach((b) => b.onclick = () => setWeekChoice(b.dataset.week, CHOICE_NEXT[myWeekChoice(b.dataset.week)]));
+    $("#wk-all-ok").onclick = async () => { const rows = weeks.filter((w) => !myWeekChoice(w.start)).map((w) => ({ user_id: S.session.user.id, week_start: w.start, choice: "ok" })); if (rows.length) { const { error } = await sb.from("week_votes").upsert(rows); if (error) toast(error.message, 5000); } await loadAll(); renderAll(); };
+    $("#wk-clear").onclick = async () => { if (!confirm("Clear all your week answers?")) return; await sb.from("week_votes").delete().eq("user_id", S.session.user.id); await loadAll(); renderAll(); };
+    // everyone, by household
+    const hhs = households();
+    const who = (h) => { const m = S.profiles.filter((p) => p.household === h); const a = m.filter((p) => S.weekVotes.some((v) => v.user_id === p.id)).length; return `${a}/${m.length} answered`; };
+    $("#dates-results").innerHTML = `<h3>Everyone's answers, by household</h3><p class="tiny muted">A household shows Can't if anyone in it can't, Prefer if anyone prefers, otherwise Could. Grey means nobody in that household has answered yet.</p>
+      <div class="table-wrap"><div class="poll-grid" style="grid-template-columns:170px repeat(${weeks.length},minmax(40px,1fr))">
+        <div class="hdr"></div>${weeks.map((w) => `<div class="hdr ${isTripWeek(w) ? "trip" : ""}">${weekLabel(w)}</div>`).join("")}
+        ${hhs.map((h) => `<div class="rowlabel">${esc(h.split(",")[0])}<span class="s">${who(h)}</span></div>` + weeks.map((w) => { const c = householdChoice(h, w.start); return `<div class="cell ${c} ${isTripWeek(w) ? "trip" : ""}" data-tip="${esc(h + ": " + (CHOICE_LABEL[c] === "—" ? "no answer yet" : CHOICE_LABEL[c]) + " · week of " + weekRange(w))}">${c === "no" ? "✕" : c === "prefer" ? "★" : c === "ok" ? "✓" : ""}</div>`; }).join("")).join("")}
+        <div class="rowlabel">Can make it</div>${weeks.map((w) => { const can = hhs.filter((h) => ["ok", "prefer"].includes(householdChoice(h, w.start))).length; const pref = hhs.filter((h) => householdChoice(h, w.start) === "prefer").length; return `<div class="cell sum ${isTripWeek(w) ? "trip" : ""}"><span>${can}/${hhs.length}</span><span class="tiny muted">${pref ? pref + "★" : ""}</span></div>`; }).join("")}
+      </div></div>`;
+    // synthesis
+    const ranked = rankWeeks();
+    const anyAnswers = S.weekVotes.length > 0;
+    const top = ranked.filter((r) => r.cant === 0 && r.can > 0).slice(0, 3);
+    const fallback = ranked.slice(0, 3);
+    const list = top.length ? top : fallback;
+    const houseLine = (p) => `<div class="house-line"><span><a href="#" data-open-prop="${p.id}">${esc(p.title.length > 44 ? p.title.slice(0, 43) + "…" : p.title)}</a> <span class="muted tiny">${esc(destOf(p)?.name?.split(" / ")[0]?.split(":")[0] || "")}${p.is_finalist ? " · ★ on ballot" : ""}${p.ai_pick ? " · AI" : ""}</span></span><span class="mini-score">${p.total}<small>/100</small></span></div>`;
+    $("#dates-best").innerHTML = `<h3>Which weeks work best</h3>
+      <p class="tiny muted">Ranked by: no household says Can't, then how many can make it, then how many prefer it, then how many houses are confirmed open. ${anyAnswers ? "" : "Nobody has answered the poll yet, so this is only the calendar for now."}</p>
+      ${list.length ? list.map((r, i) => `<div class="card best-week" style="margin-bottom:12px">
+        <div><div class="big">#${i + 1} ${weekRange(r.w)}</div><div class="meta">${r.can} of ${hhs.length} households can make it${r.prefer ? ` · ${r.prefer} prefer it` : ""}${r.cant ? ` · <b style="color:var(--d9)">${r.cant} can't</b>` : ""}${r.unanswered ? ` · ${r.unanswered} not answered` : ""}</div>
+          <div class="meta" style="margin-top:.4em">${r.answers.map((a) => `<i class="pill ${a.c === "prefer" ? "ok" : a.c === "ok" ? "sun" : a.c === "no" ? "warn" : "neutral"}" title="${esc(a.h)}">${esc(a.h.split(",")[0])} ${CHOICE_LABEL[a.c] === "—" ? "?" : CHOICE_LABEL[a.c]}</i>`).join(" ")}</div>
+          ${isAdmin() ? `<div class="actions"><button class="btn small ${isTripWeek(r.w) ? "" : "primary"}" data-set-week="${r.w.start}" ${isTripWeek(r.w) ? "disabled" : ""}>${isTripWeek(r.w) ? "This is our target week" : "Make this our target week"}</button></div>` : (isTripWeek(r.w) ? `<div class="meta"><i class="pill ok">our target week</i></div>` : "")}
+        </div>
+        <div>
+          <div class="section-title" style="margin-top:0">Confirmed open that week (${r.houses.open.length})</div>${r.houses.open.length ? r.houses.open.slice(0, 8).map(houseLine).join("") + (r.houses.open.length > 8 ? `<p class="tiny muted">…and ${r.houses.open.length - 8} more</p>` : "") : `<p class="empty">None confirmed yet.</p>`}
+          <details class="quiet"><summary>Not checked yet for this week (${r.houses.unknown.length}) · booked (${r.houses.booked.length})</summary>${r.houses.unknown.slice(0, 10).map(houseLine).join("")}${r.houses.booked.length ? `<div class="section-title">Booked</div>${r.houses.booked.slice(0, 10).map((p) => `<div class="house-line" style="opacity:.6"><span>${esc(p.title.slice(0, 44))}</span><span class="pill warn">booked</span></div>`).join("")}` : ""}</details>
+        </div></div>`).join("") : `<p class="empty">Nothing to rank yet.</p>`}`;
+    $$("#dates-best [data-set-week]").forEach((b) => b.onclick = async () => {
+      const w = weeks.find((x) => x.start === b.dataset.setWeek); if (!w) return;
+      const trip = { ...(S.settings.trip || {}), check_in: w.start, check_out: w.end };
+      const { error } = await sb.from("settings").upsert({ key: "trip", value: trip });
+      if (error) toast(error.message, 5000); else { toast(`Target week set: ${weekRange(w)}. Availability prompts now name it.`, 6000); await loadAll(); renderAll(); }
     });
   }
 
